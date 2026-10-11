@@ -178,13 +178,15 @@ def _ray_matrix(pc, size, qpc):
 
 def deformation_from_homography(h, reference_pc, scan_pc, orientation,
                                 sample_tilt, camera_elevation, material,
-                                size, phosphor_to_sample=None):
+                                size, phosphor_to_sample=None,
+                                mechanical_constraint="traction_free"):
     """Recover crystal F using PC geometry and zero sample-normal stress.
 
-    Homography fixes F up to a scalar.  The scalar is chosen so the linear
-    elastic stress normal to the free sample surface vanishes.  This resolves
-    the hydrostatic ambiguity only through the stated boundary assumption.
+    Homography fixes F up to a scalar. ``traction_free`` chooses the scalar
+    from zero normal stress; ``isochoric`` chooses it from det(F)=1.
     """
+    if mechanical_constraint not in ("traction_free", "isochoric"):
+        raise ValueError("mechanical_constraint must be traction_free or isochoric")
     g = np.asarray(orientation, dtype=float)
     if g.shape == (3,):
         g = euler_to_matrix(*g)
@@ -200,15 +202,18 @@ def deformation_from_homography(h, reference_pc, scan_pc, orientation,
     # Choose the positive projective gauge nearest identity first.
     f0 *= 3/np.trace(f0)
     c = material.stiffness()
-    normal_crystal = g @ np.array([0., 0., 1.])
-    # Polar stretch scales linearly with the projective gauge, so the normal
-    # stress equation has an exact scalar solution even at finite rotation.
-    _, singular0, vh0 = np.linalg.svd(f0)
-    stretch0 = (vh0.T*singular0) @ vh0
-    a = np.einsum('i,ijkl,kl,j->', normal_crystal, c, stretch0,
-                  normal_crystal)
-    b = np.einsum('i,ijkk,j->', normal_crystal, c, normal_crystal)
-    f = f0*(b/a)
+    if mechanical_constraint == "isochoric":
+        determinant = np.linalg.det(f0)
+        if determinant <= 0:
+            raise ValueError("isochoric homography produced a non-positive determinant")
+        f = f0 / determinant ** (1.0 / 3.0)
+    else:
+        normal_crystal = g @ np.array([0., 0., 1.])
+        _, singular0, vh0 = np.linalg.svd(f0)
+        stretch0 = (vh0.T*singular0) @ vh0
+        a = np.einsum('i,ijkl,kl,j->', normal_crystal, c, stretch0, normal_crystal)
+        b = np.einsum('i,ijkk,j->', normal_crystal, c, normal_crystal)
+        f = f0*(b/a)
     _, singular, vh = np.linalg.svd(f)
     strain = (vh.T*singular) @ vh-np.eye(3)
     stress = np.einsum('ijkl,kl->ij', c, strain)
@@ -230,13 +235,15 @@ class HomographyResult:
 def analyze_homography(reference, scan, reference_pc, scan_pc, orientation,
                        sample_tilt, camera_elevation, material, *, prepared=None,
                        margin_fraction=0.08, max_iterations=40,
-                       tolerance=1e-5, phosphor_to_sample=None, device="cpu",
+                       tolerance=1e-5, phosphor_to_sample=None, mechanical_constraint="traction_free", device="cpu",
                        gpu_device_id=0, registration=None, initial_homography=None):
     plan = prepared or prepare_homography(reference,
                                           margin_fraction=margin_fraction,
                                           device=device, gpu_device_id=gpu_device_id)
     if plan.device != device:
         raise ValueError("prepared homography plan uses a different device")
+    if mechanical_constraint not in ("traction_free", "isochoric"):
+        raise ValueError("mechanical_constraint must be traction_free or isochoric")
     g = np.asarray(orientation, dtype=float)
     if g.shape == (3,):
         g = euler_to_matrix(*g)
@@ -254,5 +261,5 @@ def analyze_homography(reference, scan, reference_pc, scan_pc, orientation,
     h, rms, iterations, converged = registration
     f, strain, stress, g = deformation_from_homography(
         h, reference_pc, scan_pc, g, sample_tilt, camera_elevation,
-        material, size, phosphor_to_sample)
+        material, size, phosphor_to_sample, mechanical_constraint)
     return HomographyResult(f, strain, stress, g, h, rms, iterations, converged)

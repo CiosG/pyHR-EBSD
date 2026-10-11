@@ -38,7 +38,8 @@ CONFIG = {
     # BCF: processed=dynamic-LMSD 8-bit in memory, unprocessed=raw intensity plus selected correction
     "h5_pc_source": "ebsd",  # H5OINA: "ebsd" or "data_processing" (including MapSweeper PC); other readers select their source
     "pc_mode": "array",  # "single" repeats one PC; "array" uses per-point/source PC
-    "material_name": "silicon",  # database key or the full material name
+    "material_name": "silicon",
+    "mechanical_constraint": "traction_free",  # or "isochoric"
     "reference_map_point": None,  # None uses first stored pattern; or zero-based (column, row)
     "pattern_binning": 1,  # use 2, 4, or 8 for block-averaged patterns
     "edax_up2_file": None,  # input_file="map.ang" auto-uses "map.up2"; set a path if different
@@ -387,6 +388,7 @@ def _analyze(reference, scan, reference_pc, scan_pc, orientation, material, conf
             phosphor_to_sample=config.get("phosphor_to_sample"),
             device=config.get("homography_device", "cpu"),
             gpu_device_id=config.get("homography_gpu_device_id", 0),
+            mechanical_constraint=config.get("mechanical_constraint", "traction_free"),
             registration=registration, initial_homography=initial_homography)
     if method != "roi":
         raise ValueError("analysis_method must be 'roi' or 'homography'")
@@ -403,6 +405,7 @@ def _analyze(reference, scan, reference_pc, scan_pc, orientation, material, conf
         roi_filter=config["roi_filter"],
         prepared=prepared,
         phosphor_to_sample=config.get("phosphor_to_sample"),
+        mechanical_constraint=config.get("mechanical_constraint", "traction_free"),
         device=config.get("roi_device", "cpu"),
         gpu_device_id=config.get("roi_gpu_device_id", 0),
         subpixel_method="quadratic_2d",
@@ -413,7 +416,8 @@ def _analyze(reference, scan, reference_pc, scan_pc, orientation, material, conf
 
 def _summary_fields():
     fields = ["scan_index", "reference_index", "column", "row", "grain_id",
-              "pc_source", "pc_mode", "analysis_method", "roi_device",
+              "pc_source", "pc_mode", "analysis_method", "mechanical_constraint",
+              "roi_device",
               "homography_device",
               "status", "error",
               "rms_shift_error_pixels", "used_rois", "total_rois",
@@ -888,6 +892,7 @@ def run(config=CONFIG):
                                "pc_source": reader.pc_source,
                                "pc_mode": pc_mode,
                                "analysis_method": config.get("analysis_method", "roi"),
+                               "mechanical_constraint": config.get("mechanical_constraint", "traction_free"),
                                "roi_device": (config.get("roi_device", "cpu")
                                               if config.get("analysis_method", "roi")
                                               == "roi" else ""),
@@ -932,6 +937,7 @@ def run(config=CONFIG):
                                           "pattern_type": reader.pattern_type,
                                           "pc_source": reader.pc_source,
                                           "pc_mode": pc_mode,
+                                          "mechanical_constraint": config.get("mechanical_constraint", "traction_free"),
                                           "reference_index": reference_index, "scan_index": int(index),
                                           "reference_pattern_center": reference_pc,
                                           "scan_pattern_center": scan_pc}

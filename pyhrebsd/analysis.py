@@ -239,12 +239,16 @@ def fit_deformation(
     material: Material,
     standard_deviation: float = 2.0,
     phosphor_to_sample: ArrayLike | None = None,
+    mechanical_constraint: str = "traction_free",
 ) -> DeformationResult:
-    """Fit CalcFShift's real-reference, free-surface deformation solution.
+    """Fit a real-reference deformation solution with the selected constraint.
 
     Pattern centers are normalized to pattern width. Angles are radians.
+    ``mechanical_constraint`` is ``traction_free`` or ``isochoric``.
     The resulting F and strain are in the crystal frame; stress is in GPa.
     """
+    if mechanical_constraint not in ("traction_free", "isochoric"):
+        raise ValueError("mechanical_constraint must be traction_free or isochoric")
     if len(shifts) < 4:
         raise ValueError("at least four ROI shifts are required")
     if pixel_size <= 0 or reference_pc[2] <= 0 or scan_pc[2] <= 0:
@@ -305,11 +309,15 @@ def fit_deformation(
         "ia,jb,kc,ld,abcd->ijkl", crystal_to_phosphor, crystal_to_phosphor,
         crystal_to_phosphor, crystal_to_phosphor, crystal_stiffness,
     )
-    normal = qps.T @ np.array([0.0, 0.0, 1.0])
-    boundary = np.array([
-        sum(phosphor_stiffness[2, j, k, l] * normal[j] for j in range(3))
-        for k in range(3) for l in range(3)
-    ]) / 100
+    if mechanical_constraint == "traction_free":
+        normal = qps.T @ np.array([0.0, 0.0, 1.0])
+        boundary = np.array([
+            sum(phosphor_stiffness[2, j, k, l] * normal[j] for j in range(3))
+            for k in range(3) for l in range(3)
+        ]) / 100
+    else:
+        # Small-strain form of det(F)=1: trace of the displacement gradient is zero.
+        boundary = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])
     design = np.vstack((a1, a2, boundary))
     response = np.concatenate((q[:, 0] * r[:, 2], q[:, 1] * r[:, 2], [0.0]))
     solution, _, rank, _ = np.linalg.lstsq(design, response, rcond=None)
@@ -317,6 +325,11 @@ def fit_deformation(
         raise ValueError("ROI layout cannot determine all deformation components")
     phosphor_deformation = np.eye(3) + solution.reshape(3, 3)
     f = qpc @ phosphor_deformation @ qpc.T
+    if mechanical_constraint == "isochoric":
+        determinant = np.linalg.det(f)
+        if determinant <= 0:
+            raise ValueError("isochoric fit produced a non-positive determinant")
+        f = f / determinant ** (1.0 / 3.0)
     _, singular_values, vh = np.linalg.svd(f)
     stretch = (vh.T * singular_values) @ vh
     strain = stretch - np.eye(3)
@@ -349,6 +362,7 @@ def analyze_pair(
     subpixel_method: str = "parabolic_1d",
     remapping: bool = False,
     initial_shifts: list[CorrelationResult] | tuple[CorrelationResult, ...] | None = None,
+    mechanical_constraint: str = "traction_free",
 ) -> DeformationResult:
     """Correlate a pattern pair, optionally back-rotating for a second pass."""
     ref = np.asarray(reference)
@@ -401,7 +415,7 @@ def analyze_pair(
                                         subpixel_method=subpixel_method, **options)
     first = fit_deformation(shifts, ref.shape[0], reference_pc, scan_pc, orientation,
                             sample_tilt, camera_elevation, material, standard_deviation,
-                            phosphor_to_sample)
+                            phosphor_to_sample, mechanical_constraint=mechanical_constraint)
     if not remapping:
         return first
 
@@ -436,7 +450,7 @@ def analyze_pair(
     residual = fit_deformation(
         residual_shifts, ref.shape[0], reference_pc, reference_pc, orientation,
         sample_tilt, camera_elevation, material, standard_deviation,
-        phosphor_to_sample)
+        phosphor_to_sample, mechanical_constraint=mechanical_constraint)
     deformation = rotation_crystal @ residual.deformation
     from .rotations import sample_rotation_vector_mrad
     return replace(
