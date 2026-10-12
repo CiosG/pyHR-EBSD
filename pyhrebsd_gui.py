@@ -178,6 +178,15 @@ class PyHREBSDWizard(QtWidgets.QWizard):
                 if reader.camera_elevation_degrees() is not None:
                     label, editor = page.field_rows["camera_elevation_degrees"]
                     label.setVisible(False); editor.setVisible(False)
+                # Dataset readers provide the reference crystal orientation from
+                # their Euler dataset; the manual override is only for image mode.
+                try:
+                    reader.orientation(0)
+                except Exception:
+                    pass
+                else:
+                    label, editor = page.field_rows["reference_euler_degrees"]
+                    label.setVisible(False); editor.setVisible(False)
         except Exception:
             # Keep overrides available if the file is incomplete or still being edited.
             return
