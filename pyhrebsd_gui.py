@@ -64,7 +64,7 @@ class ConfigPage(QtWidgets.QWizardPage):
 
 class PyHREBSDWizard(QtWidgets.QWizard):
     def __init__(self):
-        super().__init__(); self.setWindowTitle("pyHREBSD"); self.resize(1050, 760)
+        super().__init__(); self.setWindowTitle("pyHREBSD - Step-by-step wizard"); self.resize(1050, 760)
         self.widgets = {}; self.path_editors = {}; self.thread = None; self.worker = None; self.running = False
         self.pattern_status = QtWidgets.QLabel("Select an input file to inspect available pattern sets")
         self.pages = {}
@@ -226,6 +226,7 @@ def main():
     app=QtWidgets.QApplication(sys.argv); app.setApplicationName("pyHREBSD"); window=PyHREBSDWizard(); window.show(); sys.exit(app.exec())
 
 if __name__ == "__main__": main()
+
 
 
 
