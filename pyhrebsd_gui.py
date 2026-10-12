@@ -96,7 +96,12 @@ class MainWindow(QtWidgets.QMainWindow):
             for key in ("roi_gpu_device_id", "homography_gpu_device_id"):
                 widget = self.widgets.get(key)
                 if isinstance(widget, QtWidgets.QLineEdit): widget.setText("0")
-            self.status.setText(f"GPU detected ({count} device(s)); GPU selected")
+            # One process per GPU is the safe default for full-pattern homography.
+            # Multiple workers duplicate 512x512 patterns and CUDA workspaces.
+            for key in ("roi_gpu_workers", "homography_gpu_workers", "workers"):
+                widget = self.widgets.get(key)
+                if isinstance(widget, QtWidgets.QLineEdit): widget.setText("1")
+            self.status.setText(f"GPU detected ({count} device(s)); GPU selected (1 worker)")
         else:
             self.status.setText("GPU not detected; CPU selected")
         self.sync_raw()
