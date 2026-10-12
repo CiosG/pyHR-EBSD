@@ -27,23 +27,42 @@ def _plot(rows, output, key, title, cmap="viridis"):
     y = np.asarray([_float(r, "row") for r in rows])
     z = np.asarray([_float(r, key) for r in rows])
     valid = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(8, 6))
     if np.any(valid):
-        sc = ax.scatter(x[valid], y[valid], c=z[valid], s=12, cmap=cmap)
-        fig.colorbar(sc, ax=ax, label=key)
-    ax.set_title(title); ax.set_xlabel("column"); ax.set_ylabel("row"); ax.invert_yaxis()
-    fig.tight_layout(); fig.savefig(output, dpi=160); plt.close(fig)
+        width = int(np.nanmax(x[valid])) + 1
+        height = int(np.nanmax(y[valid])) + 1
+        image = np.full((height, width), np.nan, dtype=float)
+        image[y[valid].astype(int), x[valid].astype(int)] = z[valid]
+        shown = ax.imshow(image, origin="upper", interpolation="nearest", cmap=cmap)
+        fig.colorbar(shown, ax=ax, label=key)
+    ax.set_title(title); ax.set_xlabel("column"); ax.set_ylabel("row")
+    ax.set_aspect("equal")
+    fig.tight_layout(); fig.savefig(output, dpi=180); plt.close(fig)
 
 def _hist(rows, output, keys):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(8, 5))
+    series=[]
     for key in keys:
-        values = np.asarray([_float(r, key) for r in rows]); values = values[np.isfinite(values)]
-        if values.size: ax.hist(values, bins=40, alpha=.45, label=key)
-    ax.set_title("Strain distributions"); ax.set_xlabel("value"); ax.set_ylabel("points"); ax.legend(fontsize=8)
-    fig.tight_layout(); fig.savefig(output, dpi=160); plt.close(fig)
+        values=np.asarray([_float(r,key) for r in rows])
+        values=values[np.isfinite(values)]
+        if values.size: series.append((key,values))
+    fig,ax=plt.subplots(figsize=(9,5.5))
+    all_values=np.concatenate([v for _,v in series]) if series else np.asarray([])
+    if all_values.size:
+        low,high=np.percentile(all_values,[1.0,99.0])
+        if not np.isfinite(low) or not np.isfinite(high) or low==high:
+            low,high=float(np.min(all_values)),float(np.max(all_values))
+        if low==high: high=low+1e-12
+        for key,values in series:
+            ax.hist(values,bins=120,range=(low,high),alpha=.45,label=key)
+        ax.set_xlim(low,high)
+        ax.set_title("Distributions (1st?99th percentile)")
+    else:
+        ax.set_title("Distributions")
+    ax.set_xlabel("value"); ax.set_ylabel("points"); ax.legend(fontsize=8)
+    fig.tight_layout(); fig.savefig(output,dpi=180); plt.close(fig)
 
 def _profile(rows, output, key):
     import matplotlib
