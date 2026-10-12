@@ -790,6 +790,13 @@ def run(config=CONFIG):
     metadata = dict(config)
     metadata["software"] = "pyHREBSD"
     metadata["software_version"] = "development"
+    try:
+        import subprocess
+        metadata["git_commit"] = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
+            check=True, capture_output=True, text=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        metadata["git_commit"] = "unknown"
     (output_dir / "run_config.json").write_text(
         json.dumps(metadata, indent=2, default=str), encoding="utf-8")
     mode = config.get("input_mode",
@@ -1052,6 +1059,13 @@ def run(config=CONFIG):
     metadata = dict(config)
     metadata["software"] = "pyHREBSD"
     metadata["software_version"] = "development"
+    try:
+        import subprocess
+        metadata["git_commit"] = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent,
+            check=True, capture_output=True, text=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        metadata["git_commit"] = "unknown"
     (output_dir / "run_config.json").write_text(
         json.dumps(metadata, indent=2, default=str), encoding="utf-8")
     if config.get("generate_report", True):
