@@ -1,6 +1,6 @@
 """Optional PySide6 GUI for configuring and running pyHREBSD."""
 from __future__ import annotations
-import json, sys, traceback
+import json, sys, traceback, re
 import h5py
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -72,7 +72,7 @@ class MainWindow(QtWidgets.QMainWindow):
         run_button = QtWidgets.QPushButton("Run analysis"); run_button.clicked.connect(self.start_run)
         report = QtWidgets.QPushButton("Open report"); report.clicked.connect(self.open_report)
         folder = QtWidgets.QPushButton("Open output folder"); folder.clicked.connect(self.open_folder)
-        self.status = QtWidgets.QLabel("Ready"); self.progress = QtWidgets.QProgressBar(); self.progress.setRange(0, 0); self.progress.hide()
+        self.status = QtWidgets.QLabel("Ready"); self.progress = QtWidgets.QProgressBar(); self.progress.setRange(0, 100); self.progress.setValue(0); self.progress.setMinimumWidth(220); self.progress.hide()
         buttons = QtWidgets.QHBoxLayout()
         for b in (load, save, run_button, report, folder): buttons.addWidget(b)
         buttons.addStretch(); buttons.addWidget(self.status); buttons.addWidget(self.progress)
@@ -177,9 +177,20 @@ class MainWindow(QtWidgets.QMainWindow):
         try: config = self.config()
         except ValueError as exc: QtWidgets.QMessageBox.critical(self, "Configuration error", str(exc)); return
         self.log.clear(); self.status.setText("Running"); self.progress.show(); self.thread = QtCore.QThread(self); self.worker = RunWorker(config); self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.execute); self.worker.message.connect(self.log.appendPlainText); self.worker.finished.connect(self.finished); self.worker.failed.connect(self.failed); self.worker.finished.connect(self.thread.quit); self.worker.failed.connect(self.thread.quit); self.thread.finished.connect(self.cleanup); self.thread.start()
+        self.thread.started.connect(self.worker.execute); self.worker.message.connect(self.handle_message); self.worker.finished.connect(self.finished); self.worker.failed.connect(self.failed); self.worker.finished.connect(self.thread.quit); self.worker.failed.connect(self.thread.quit); self.thread.finished.connect(self.cleanup); self.thread.start()
 
-    def finished(self, _): self.status.setText("Finished"); self.log.appendPlainText("Analysis finished.")
+    @QtCore.Slot(str)
+    def handle_message(self, message):
+        self.log.appendPlainText(message)
+        match = re.search(r"Processed\s+(\d+)/(\d+)\s+patterns", message)
+        if match:
+            done, total = map(int, match.groups())
+            self.progress.setRange(0, max(1, total)); self.progress.setValue(done)
+            self.status.setText(f"Processed {done}/{total} patterns")
+        elif message.startswith("ROIs") or message.startswith("Homography") or message.startswith("Geometry"):
+            self.status.setText(message[:100])
+
+    def finished(self, _): self.progress.setValue(self.progress.maximum()); self.status.setText("Finished"); self.log.appendPlainText("Analysis finished.")
     def failed(self, message): self.status.setText("Failed"); self.log.appendPlainText(message); QtWidgets.QMessageBox.critical(self, "Analysis failed", message)
     def cleanup(self): self.progress.hide(); self.worker = None; self.thread.deleteLater(); self.thread = None
     def output(self):
