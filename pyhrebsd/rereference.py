@@ -48,3 +48,40 @@ def rereference_homography(input_dir, new_reference_index, output_dir):
     config["reference_index"]=int(new_reference_index); config["rereferenced_from"] = str(input_dir)
     (output_dir/"run_config.json").write_text(json.dumps(config,indent=2),encoding="utf-8")
     return output_dir
+
+
+def rereference_strain(input_dir, new_reference_index, output_dir):
+    """Subtract a stored reference strain from every point without refitting."""
+    input_dir=Path(input_dir); output_dir=Path(output_dir)
+    if output_dir.exists(): raise FileExistsError(output_dir)
+    output_dir.mkdir(parents=True)
+    with (input_dir/"scan_results.csv").open(newline="",encoding="utf-8") as f:
+        rows=list(csv.DictReader(f))
+    if not rows: raise ValueError("scan_results.csv is empty")
+    target=next((r for r in rows if int(r["scan_index"])==int(new_reference_index)),None)
+    if target is None: raise ValueError("new reference index is not present")
+    def matrix(row,prefix):
+        return np.array([[float(row[f"{prefix}_{i}{j}"]) for j in range(1,4)] for i in range(1,4)])
+    ref=matrix(target,"strain_sample")
+    out=[]
+    for row in rows:
+        item=dict(row); strain=matrix(row,"strain_sample")-ref
+        dev=strain-np.eye(3)*np.trace(strain)/3
+        item["reference_index"]=int(new_reference_index)
+        item["strain_rereferenced"]=True
+        for prefix,m in (("strain_sample",strain),("deviatoric_strain_sample",dev)):
+            item.update({f"{prefix}_{i+1}{j+1}":float(m[i,j]) for i in range(3) for j in range(3)})
+        for i in range(1,4):
+            key=f"rotation_sample_{i}_mrad"
+            if key in item and target.get(key,"") not in ("",None):
+                item[key]=float(item[key])-float(target[key])
+        out.append(item)
+    with (output_dir/"scan_results.csv").open("w",newline="",encoding="utf-8") as f:
+        w=csv.DictWriter(f,fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
+    config={}
+    if (input_dir/"run_config.json").exists():
+        config=json.loads((input_dir/"run_config.json").read_text(encoding="utf-8"))
+    config["reference_index"]=int(new_reference_index); config["strain_rereferenced_from"]=str(input_dir)
+    config["strain_rereference_note"]="Stored relative sample strains were subtracted; stresses are retained from the original run."
+    (output_dir/"run_config.json").write_text(json.dumps(config,indent=2),encoding="utf-8")
+    return output_dir

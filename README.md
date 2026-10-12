@@ -81,7 +81,13 @@ For a completed **homography** run, a different reference point can be selected 
 python rereference_homography.py results_old 10090 results_reference_10090
 ```
 
-This composes the stored homographies and recalculates the deformation and stress fields. It does not repeat image registration. The current re-reference tool supports H5OINA homography runs; ROI re-referencing requires storing and composing the per-pattern ROI measurements first.
+This composes the stored homographies and recalculates the deformation and stress fields. It does not repeat image registration. For ROI or any other completed run, relative sample-strain maps can be re-referenced by subtraction:
+
+```powershell
+python rereference_strain.py results_old 10090 results_strain_reference_10090
+```
+
+This sets the selected point to zero and subtracts its stored `strain_sample_*` and rotation values from every point. The original stresses are retained and marked as belonging to the original reference; absolute stress should be recalculated only with an explicitly chosen mechanical constraint.
 
 `scan_results.csv` also contains uncertainty indicators for every successful point. ROI runs report the standard deviation of the accepted ROI shifts (`roi_shift_std_x`, `roi_shift_std_y`, `roi_shift_std_rms`), mean correlation quality, and an equivalent ROI ZNSSD estimate. Homography runs report ZNSSD, iteration count, and convergence. All methods report `pc_sensitivity_*` columns: the change in sample strain after perturbing each PC component by `uncertainty_pc_shift_pixels` (default: one detector pixel), with registration held fixed. These are sensitivity indicators rather than statistical confidence intervals.
 
