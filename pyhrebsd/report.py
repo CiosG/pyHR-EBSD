@@ -76,14 +76,38 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     output=Path(output_dir); csv_path=output/"scan_results.csv"
     if not csv_path.exists(): raise FileNotFoundError(csv_path)
     rows=_rows(csv_path); assets=output/"report_assets"; assets.mkdir(exist_ok=True)
+    accepted_rows=[r for r in rows if r.get("status")=="ok"]
+    plot_rows=accepted_rows if accepted_rows else rows
     config_path=output/"run_config.json"
     config=json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
     plots=[]
-    for key,title in [("rms_shift_error_pixels","ROI RMS shift error"),("znssd_rms","Homography ZNSSD"),("roi_znssd_rms","ROI ZNSSD"),("pc_sensitivity_strain_max","PC sensitivity"),("strain_sample_11","E11"),("strain_sample_22","E22"),("strain_sample_33","E33")]:
-        if any(key in r and r.get(key) not in ("",None) for r in rows):
-            name=key+".png"; _plot(rows,assets/name,key,title); plots.append((title, "report_assets/"+name))
-    hist=assets/"strain_histogram.png"; _hist(rows,hist,["strain_sample_11","strain_sample_22","strain_sample_33"]); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
-    profile=assets/"strain_profile_e11.png"; _profile(rows,profile,"strain_sample_11"); plots.append(("E11 row profile","report_assets/strain_profile_e11.png"))
+    plot_specs=[
+        ("rms_shift_error_pixels", "ROI RMS shift error"),
+        ("znssd_rms", "Homography ZNSSD"),
+        ("roi_znssd_rms", "ROI ZNSSD"),
+        ("pc_sensitivity_strain_max", "PC sensitivity"),
+        ("strain_sample_11", "E11"), ("strain_sample_12", "E12"),
+        ("strain_sample_13", "E13"), ("strain_sample_22", "E22"),
+        ("strain_sample_23", "E23"), ("strain_sample_33", "E33"),
+        ("rotation_sample_1_mrad", "Rotation w1 (mrad)"),
+        ("rotation_sample_2_mrad", "Rotation w2 (mrad)"),
+        ("rotation_sample_3_mrad", "Rotation w3 (mrad)"),
+    ]
+    for key,title in plot_specs:
+        if any(key in r and r.get(key) not in ("",None) for r in plot_rows):
+            name=key+".png"; _plot(plot_rows,assets/name,key,title); plots.append((title, "report_assets/"+name))
+    strain_keys=["strain_sample_11","strain_sample_12","strain_sample_13",
+                 "strain_sample_22","strain_sample_23","strain_sample_33"]
+    hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
+    rotation_keys=["rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
+    rhist=assets/"rotation_histogram.png"; _hist(plot_rows,rhist,rotation_keys); plots.append(("Rotation histograms","report_assets/rotation_histogram.png"))
+    for key,title in [("strain_sample_11","E11 row profile"),
+                      ("strain_sample_22","E22 row profile"),
+                      ("strain_sample_33","E33 row profile"),
+                      ("rotation_sample_1_mrad","w1 row profile"),
+                      ("rotation_sample_2_mrad","w2 row profile"),
+                      ("rotation_sample_3_mrad","w3 row profile")]:
+        name=key+"_profile.png"; _profile(plot_rows,assets/name,key); plots.append((title,"report_assets/"+name))
     stats=_stats(rows); (output/"region_statistics.json").write_text(json.dumps(stats,indent=2),encoding="utf-8")
     rejected=[r for r in rows if r.get("status")!="ok"];
     with (output/"rejected_points.csv").open("w",newline="",encoding="utf-8") as f:

@@ -980,6 +980,10 @@ def run(config=CONFIG):
                                                      == "homography" else ""),
                                "status": "error" if error else "ok", "error": error or ""}
                         if result is not None:
+                            if (hasattr(result, "homography") and
+                                    not bool(result.converged)):
+                                row["status"] = "rejected"
+                                row["error"] = "homography did not converge"
                             if hasattr(result, "homography"):
                                 row.update({"znssd_rms": result.znssd_rms,
                                             "homography_iterations": result.iterations,
