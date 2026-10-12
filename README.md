@@ -73,6 +73,16 @@ For homography line scans, set `homography_warm_start=True` to initialize each p
 
 Set `mechanical_constraint="traction_free"` for the standard free-surface solution or `mechanical_constraint="isochoric"` for a relative volume-preserving solution comparable to simulation-based deviatoric-strain analysis. The isochoric mode should not be used to interpret hydrostatic stress.
 
+After an analysis run, `generate_report=True` creates `report.html`, `report_assets/`, `region_statistics.json`, and `rejected_points.csv`. Set `report_format="both"` to also create `report.pdf`. The report includes the saved configuration, quality maps, histograms, row profiles, region statistics, and rejected points.
+
+For a completed **homography** run, a different reference point can be selected without correlating the patterns again. The original run must contain `scan_results.csv` and `run_config.json`, and the new point must be present in that scan:
+
+```powershell
+python rereference_homography.py results_old 10090 results_reference_10090
+```
+
+This composes the stored homographies and recalculates the deformation and stress fields. It does not repeat image registration. The current re-reference tool supports H5OINA homography runs; ROI re-referencing requires storing and composing the per-pattern ROI measurements first.
+
 `scan_results.csv` also contains uncertainty indicators for every successful point. ROI runs report the standard deviation of the accepted ROI shifts (`roi_shift_std_x`, `roi_shift_std_y`, `roi_shift_std_rms`), mean correlation quality, and an equivalent ROI ZNSSD estimate. Homography runs report ZNSSD, iteration count, and convergence. All methods report `pc_sensitivity_*` columns: the change in sample strain after perturbing each PC component by `uncertainty_pc_shift_pixels` (default: one detector pixel), with registration held fixed. These are sensitivity indicators rather than statistical confidence intervals.
 
 4. Select `"cpu"` or `"gpu"` separately for the chosen registration method.

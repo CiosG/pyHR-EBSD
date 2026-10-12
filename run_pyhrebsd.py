@@ -21,6 +21,7 @@ from pyhrebsd.io import read_pattern
 from pyhrebsd.pc_calibration import (fit_pc_plane, measure_effective_pixel_size,
                                    measure_effective_pixel_size_homography,
                                    pc_plane_from_effective_pixel_size)
+from pyhrebsd.report import generate_report
 from pyhrebsd.preprocess import (correct_pattern_background,
                                correct_pattern_static_lmsd)
 from pyhrebsd.rotations import sample_rotation_vector_mrad
@@ -32,6 +33,8 @@ CONFIG = {
     "run_mode": "analysis",  # "analysis" or "calibration" on a separate strain-free single-crystal scan
     "input_file": "scan.h5oina",  # .tfs.hdf5, .h5oina, .oh5, .ang, .up2, or .bcf; relative or absolute
     "output_dir": "results_roi_cpu",  # must be new; existing results are not overwritten
+    "generate_report": True,  # create report.html after an analysis run
+    "report_format": "html",  # "html", "pdf", or "both"
 
     # Required for run_mode="analysis".
     "analysis_method": "roi",  # "roi", "homography", or "hybrid" (ROI-remap start + homography)
@@ -783,6 +786,12 @@ def run(config=CONFIG):
     output_dir = _path(config["output_dir"])
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite analysis results: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata = dict(config)
+    metadata["software"] = "pyHREBSD"
+    metadata["software_version"] = "development"
+    (output_dir / "run_config.json").write_text(
+        json.dumps(metadata, indent=2, default=str), encoding="utf-8")
     mode = config.get("input_mode",
                       "dataset" if ("input_file" in config or "h5oina_file" in config)
                       else "images")
@@ -1040,6 +1049,14 @@ def run(config=CONFIG):
                          material)
     else:
         raise ValueError("input_mode must be 'dataset' or 'images'")
+    metadata = dict(config)
+    metadata["software"] = "pyHREBSD"
+    metadata["software_version"] = "development"
+    (output_dir / "run_config.json").write_text(
+        json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    if config.get("generate_report", True):
+        report = generate_report(output_dir, config.get("report_format", "html"))
+        print(f"Report: {report}")
 
 
 if __name__ == "__main__":
