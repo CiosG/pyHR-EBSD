@@ -106,12 +106,12 @@ def draw(result: dict, kind: str, strain_limit: float, rotation_limit: float,
          strain_linthresh: float | None = None) -> None:
     tensor = result["tensors"][kind]
     rotations = result["rotations"]
-    fig = plt.figure(figsize=(11.8, 11.5), facecolor="white")
-    grid = fig.add_gridspec(3, 4, width_ratios=(0.045, 1, 1, 1),
+    fig = plt.figure(figsize=(11.8, 14.5), facecolor="white")
+    grid = fig.add_gridspec(4, 4, width_ratios=(0.045, 1, 1, 1),
                            left=0.055, right=0.985, top=0.88, bottom=0.095,
                            wspace=0.17, hspace=0.30)
     axes = [[fig.add_subplot(grid[row, col + 1]) for col in range(3)]
-            for row in range(3)]
+            for row in range(4)]
     cmap = plt.get_cmap("RdBu_r").copy()
     cmap.set_bad("white")
     strain_norm = (TwoSlopeNorm(vmin=-strain_limit, vcenter=0, vmax=strain_limit)
@@ -121,17 +121,22 @@ def draw(result: dict, kind: str, strain_limit: float, rotation_limit: float,
     rotation_norm = TwoSlopeNorm(vmin=-rotation_limit, vcenter=0,
                                  vmax=rotation_limit)
     independent = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
-    for panel, (row, col) in enumerate(independent):
-        ax = axes[panel // 3][panel % 3]
-        image_strain = ax.imshow(tensor[row, col], origin="upper",
-                                 interpolation="nearest", cmap=cmap,
-                                 norm=strain_norm)
-        ax.set_title(rf"$\epsilon_{{{row+1}{col+1}}}$" if kind == "elastic"
-                     else rf"$\epsilon'_{{{row+1}{col+1}}}$", fontsize=12)
-        ax.set_xticks([]); ax.set_yticks([])
-        for spine in ax.spines.values(): spine.set_linewidth(0.75)
+    independent_set = set(independent)
+    for row in range(3):
+        for col in range(3):
+            ax = axes[row][col]
+            if (row, col) not in independent_set:
+                ax.axis("off")
+                continue
+            image_strain = ax.imshow(tensor[row, col], origin="upper",
+                                     interpolation="nearest", cmap=cmap,
+                                     norm=strain_norm)
+            ax.set_title(rf"$\epsilon_{{{row+1}{col+1}}}$" if kind == "elastic"
+                         else rf"$\epsilon'_{{{row+1}{col+1}}}$", fontsize=12)
+            ax.set_xticks([]); ax.set_yticks([])
+            for spine in ax.spines.values(): spine.set_linewidth(0.75)
     for col in range(3):
-        ax = axes[2][col]
+        ax = axes[3][col]
         image_rotation = ax.imshow(rotations[col], origin="upper",
                                    interpolation="nearest", cmap=cmap,
                                    norm=rotation_norm)
@@ -140,7 +145,7 @@ def draw(result: dict, kind: str, strain_limit: float, rotation_limit: float,
         ax.set_yticks([])
         for spine in ax.spines.values():
             spine.set_linewidth(0.75)
-    cax_strain = fig.add_subplot(grid[:2, 0])
+    cax_strain = fig.add_subplot(grid[:3, 0])
     strain_ticks = (np.linspace(-strain_limit, strain_limit, 5)
                     if strain_linthresh is None else
                     np.array(sorted({-strain_limit, strain_limit, 0.0,
@@ -154,7 +159,7 @@ def draw(result: dict, kind: str, strain_limit: float, rotation_limit: float,
     cbar_strain.ax.yaxis.set_ticks_position("left")
     cbar_strain.ax.set_title("mm/m", fontsize=10, pad=8)
     cbar_strain.ax.tick_params(labelsize=8)
-    cax_rotation = fig.add_subplot(grid[2, 0])
+    cax_rotation = fig.add_subplot(grid[3, 0])
     cbar_rotation = fig.colorbar(image_rotation, cax=cax_rotation,
                                 ticks=np.linspace(-rotation_limit, rotation_limit, 5))
     cbar_rotation.ax.yaxis.set_ticks_position("left")
@@ -182,7 +187,7 @@ def draw(result: dict, kind: str, strain_limit: float, rotation_limit: float,
              f"step: {step_um:g} µm  |  {quality_note}  |  "
              "X₁ ←   X₂ ↓", ha="center", fontsize=10)
     # Draw a physical scale bar with the same width-to-pixel ratio as a map.
-    panel = axes[2][0].get_position()
+    panel = axes[3][0].get_position()
     bar_pixels = 20 / step_um
     x0 = panel.x0
     x1 = x0 + panel.width * bar_pixels / result["shape"][1]
