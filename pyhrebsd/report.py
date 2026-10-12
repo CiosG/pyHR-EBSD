@@ -116,6 +116,12 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
         ("strain_sample_11", "E11"), ("strain_sample_12", "E12"),
         ("strain_sample_13", "E13"), ("strain_sample_22", "E22"),
         ("strain_sample_23", "E23"), ("strain_sample_33", "E33"),
+        ("deviatoric_strain_sample_11", "Deviatoric E11"),
+        ("deviatoric_strain_sample_12", "Deviatoric E12"),
+        ("deviatoric_strain_sample_13", "Deviatoric E13"),
+        ("deviatoric_strain_sample_22", "Deviatoric E22"),
+        ("deviatoric_strain_sample_23", "Deviatoric E23"),
+        ("deviatoric_strain_sample_33", "Deviatoric E33"),
         ("stress_sample_gpa_11", "Stress S11 (GPa)"),
         ("stress_sample_gpa_12", "Stress S12 (GPa)"),
         ("stress_sample_gpa_13", "Stress S13 (GPa)"),
@@ -128,20 +134,25 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     ]
     strain_keys=["strain_sample_11","strain_sample_12","strain_sample_13",
                  "strain_sample_22","strain_sample_23","strain_sample_33"]
+    deviatoric_keys=["deviatoric_strain_sample_11","deviatoric_strain_sample_12",
+                     "deviatoric_strain_sample_13","deviatoric_strain_sample_22",
+                     "deviatoric_strain_sample_23","deviatoric_strain_sample_33"]
     stress_keys=["stress_sample_gpa_11","stress_sample_gpa_12","stress_sample_gpa_13",
                  "stress_sample_gpa_22","stress_sample_gpa_23","stress_sample_gpa_33"]
     rotation_keys=["rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
     strain_limit=_symmetric_limits(plot_rows,strain_keys)
+    deviatoric_limit=_symmetric_limits(plot_rows,deviatoric_keys)
     stress_limit=_symmetric_limits(plot_rows,stress_keys)
     rotation_limit=_symmetric_limits(plot_rows,rotation_keys)
     from matplotlib.colors import SymLogNorm, TwoSlopeNorm
     strain_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-strain_limit,vmax=strain_limit,base=10)
+    deviatoric_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-deviatoric_limit,vmax=deviatoric_limit,base=10)
     stress_norm=TwoSlopeNorm(vmin=-stress_limit,vcenter=0.0,vmax=stress_limit)
     rotation_norm=TwoSlopeNorm(vmin=-rotation_limit,vcenter=0.0,vmax=rotation_limit)
     for key,title in plot_specs:
         if any(key in r and r.get(key) not in ("",None) for r in plot_rows):
             name=key+".png"
-            norm=(rotation_norm if key in rotation_keys else stress_norm if key in stress_keys else strain_norm if key in strain_keys else None)
+            norm=(rotation_norm if key in rotation_keys else stress_norm if key in stress_keys else deviatoric_norm if key in deviatoric_keys else strain_norm if key in strain_keys else None)
             _plot(plot_rows,assets/name,key,title,norm=norm)
             plots.append((title, "report_assets/"+name))
     hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
