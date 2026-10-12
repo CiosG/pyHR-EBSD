@@ -196,10 +196,6 @@ class PyHREBSDWizard(QtWidgets.QWizard):
                     row[0].setVisible(raw_enabled); row[1].setVisible(raw_enabled)
         method = self.widgets.get("analysis_method")
         method_name = method.currentText() if method else "roi"
-        # A page can be skipped by nextId; hide it as well so the wizard never
-        # presents irrelevant controls during a transition.
-        self.pages["roi"].setVisible(method_name in ("roi", "hybrid"))
-        self.pages["homography"].setVisible(method_name in ("homography", "hybrid"))
 
     def detect_gpu_default(self):
         try:
