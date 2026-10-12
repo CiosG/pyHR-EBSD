@@ -205,6 +205,13 @@ class PyHREBSDWizard(QtWidgets.QWizard):
                     row[0].setVisible(raw_enabled); row[1].setVisible(raw_enabled)
         method = self.widgets.get("analysis_method")
         method_name = method.currentText() if method else "roi"
+        prealign = self.widgets.get("homography_prealignment")
+        prealign_row = self.pages["homography"].field_rows.get("homography_prealignment")
+        if prealign is not None and method_name == "hybrid":
+            prealign.setCurrentText("roi_remap")
+        if prealign_row:
+            prealign_row[0].setVisible(method_name != "hybrid")
+            prealign_row[1].setVisible(method_name != "hybrid")
 
     def detect_gpu_default(self):
         try:
