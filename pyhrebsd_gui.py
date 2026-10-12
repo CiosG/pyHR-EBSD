@@ -215,11 +215,24 @@ class PyHREBSDWizard(QtWidgets.QWizard):
 
     def detect_gpu_default(self):
         try:
-            import cupy as cp; count=int(cp.cuda.runtime.getDeviceCount())
-        except Exception: count=0
-        if count:
-            for k in ("roi_device","homography_device"): self.widgets.get(k).setCurrentText("gpu")
-            for k in ("roi_gpu_workers","homography_gpu_workers","workers"): self.widgets.get(k).setText("1")
+            import cupy as cp
+            count = int(cp.cuda.runtime.getDeviceCount())
+        except Exception:
+            count = 0
+        for key in ("roi_device", "homography_device"):
+            combo = self.widgets.get(key)
+            if combo is None:
+                continue
+            gpu_item = combo.findText("gpu")
+            if gpu_item >= 0:
+                combo.model().item(gpu_item).setEnabled(count > 0)
+            if count > 0:
+                combo.setCurrentText("gpu")
+            elif combo.currentText() == "gpu":
+                combo.setCurrentText("cpu")
+        if count > 0:
+            for k in ("roi_gpu_workers", "homography_gpu_workers", "workers"):
+                self.widgets.get(k).setText("1")
 
     def accept(self):
         if self.running: return
