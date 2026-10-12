@@ -108,6 +108,26 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
                       ("rotation_sample_2_mrad","w2 row profile"),
                       ("rotation_sample_3_mrad","w3 row profile")]:
         name=key+"_profile.png"; _profile(plot_rows,assets/name,key); plots.append((title,"report_assets/"+name))
+    # Reuse the validated tensor-panel plotting style used by the previous
+    # full-scan figures: quality mask, sample-axis rotation, shared scales,
+    # and symmetric-log strain colors around zero.
+    try:
+        from plot_tensor_maps import KINDS, draw, load_result, shared_limit
+        panel = load_result(csv_path, 90.0, mask_bad_fit=True)
+        rotation_limit = shared_limit([panel["rotations"]], 99.5)
+        strain_limit = shared_limit([panel["tensors"][kind] for kind in KINDS], 99.5)
+        for kind in KINDS:
+            panel_path = assets / f"{kind}_strain_rotations_symlog.png"
+            draw(panel, kind, strain_limit, rotation_limit, panel_path, 99.5,
+                 step_um=float(config.get("map_step_um", 1.0)),
+                 strain_linthresh=0.5)
+            plots.append((f"{kind.title()} strain and lattice rotation (legacy panel style)",
+                          f"report_assets/{panel_path.name}"))
+    except Exception as exc:
+        # The standard per-component plots below remain available if the
+        # optional panel helper cannot be imported in a minimal installation.
+        config["panel_plot_warning"] = str(exc)
+
     stats=_stats(rows); (output/"region_statistics.json").write_text(json.dumps(stats,indent=2),encoding="utf-8")
     rejected=[r for r in rows if r.get("status")!="ok"];
     with (output/"rejected_points.csv").open("w",newline="",encoding="utf-8") as f:
