@@ -42,19 +42,34 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
+For a complete installation (tests, GUI, and CUDA support), install the `all` extra:
+
+```powershell
+python -m pip install -e ".[all]"
+```
+
 On Linux or macOS, activate the environment with
 `source .venv/bin/activate` and use `python -m pip` in the same way.
 
-GPU execution additionally requires an NVIDIA CUDA installation and the CuPy
-package matching that CUDA version. For example, a CUDA 12 installation often
-uses:
+GPU execution requires an NVIDIA driver that supports CUDA 12 (check that
+`nvidia-smi` works). The recommended installation uses the CuPy CUDA 12 wheel,
+which installs CUDA runtime libraries from PyPI; a separate CUDA Toolkit is not
+required:
 
 ```powershell
-python -m pip install cupy-cuda12x
+python -m pip install -e ".[gpu]"
 ```
 
-Check the current CuPy installation guide for the package appropriate to your
-driver and CUDA runtime. CPU mode never imports CuPy.
+The `gpu` extra uses the CuPy CUDA 12 family (`13 <= cupy < 15`) so CuPy and
+its runtime libraries are installed as one compatible set. CPU mode never imports
+CuPy. Verify the environment before a long scan:
+
+```powershell
+python -c "import cupy as cp; print(cp.__version__, cp.cuda.runtime.getDeviceCount()); print(cp.cuda.Device(0).compute_capability)"
+```
+
+If a CUDA DLL is missing, update the NVIDIA driver and reinstall `.[gpu]`. Do not
+mix `cupy-cuda11x` and `cupy-cuda12x` in one environment.
 
 For large ROI scans, set `roi_device="gpu"` and use `gpu_batch_size="auto"` to choose a safe chunk from free VRAM (capped at 64), or set an integer explicitly. Keep `roi_gpu_workers=1` per GPU; lower the batch size if VRAM is limited.
 
