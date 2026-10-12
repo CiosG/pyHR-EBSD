@@ -8,7 +8,7 @@ try:
     from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError as exc:
     raise SystemExit("Install the optional GUI dependency first: pip install 'pyhrebsd[gui]'") from exc
-from run_pyhrebsd import CONFIG, run
+from run_pyhrebsd import CONFIG, request_cancel, run
 
 CATEGORIES = {
     "Run and input": ["run_mode", "input_file", "output_dir", "generate_report", "report_format"],
@@ -70,11 +70,12 @@ class MainWindow(QtWidgets.QMainWindow):
         load = QtWidgets.QPushButton("Load JSON"); load.clicked.connect(self.load_json)
         save = QtWidgets.QPushButton("Save JSON"); save.clicked.connect(self.save_json)
         run_button = QtWidgets.QPushButton("Run analysis"); run_button.clicked.connect(self.start_run)
+        self.cancel_button = QtWidgets.QPushButton("Cancel analysis"); self.cancel_button.clicked.connect(self.cancel_run); self.cancel_button.setEnabled(False)
         report = QtWidgets.QPushButton("Open report"); report.clicked.connect(self.open_report)
         folder = QtWidgets.QPushButton("Open output folder"); folder.clicked.connect(self.open_folder)
         self.status = QtWidgets.QLabel("Ready"); self.progress = QtWidgets.QProgressBar(); self.progress.setRange(0, 100); self.progress.setValue(0); self.progress.setMinimumWidth(220); self.progress.hide()
         buttons = QtWidgets.QHBoxLayout()
-        for b in (load, save, run_button, report, folder): buttons.addWidget(b)
+        for b in (load, save, run_button, self.cancel_button, report, folder): buttons.addWidget(b)
         buttons.addStretch(); buttons.addWidget(self.status); buttons.addWidget(self.progress)
         central = QtWidgets.QWidget(); layout = QtWidgets.QVBoxLayout(central); layout.addLayout(buttons); layout.addWidget(self.tabs); layout.addWidget(self.log); self.setCentralWidget(central)
         self.sync_raw()
@@ -196,7 +197,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def start_run(self):
         try: config = self.config()
         except ValueError as exc: QtWidgets.QMessageBox.critical(self, "Configuration error", str(exc)); return
-        self.log.clear(); self.status.setText("Running"); self.progress.show(); self.thread = QtCore.QThread(self); self.worker = RunWorker(config); self.worker.moveToThread(self.thread)
+        self.log.clear(); self.status.setText("Running"); self.progress.show(); self.cancel_button.setEnabled(True); self.thread = QtCore.QThread(self); self.worker = RunWorker(config); self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.execute); self.worker.message.connect(self.handle_message); self.worker.finished.connect(self.finished); self.worker.failed.connect(self.failed); self.worker.finished.connect(self.thread.quit); self.worker.failed.connect(self.thread.quit); self.thread.finished.connect(self.cleanup); self.thread.start()
 
     @QtCore.Slot(str)
@@ -210,9 +211,16 @@ class MainWindow(QtWidgets.QMainWindow):
         elif message.startswith("ROIs") or message.startswith("Homography") or message.startswith("Geometry"):
             self.status.setText(message[:100])
 
+    def cancel_run(self):
+        if self.thread is not None and self.thread.isRunning():
+            request_cancel()
+            self.cancel_button.setEnabled(False)
+            self.status.setText("Cancellation requested; finishing current batch")
+            self.log.appendPlainText("Cancellation requested...")
+
     def finished(self, _): self.progress.setValue(self.progress.maximum()); self.status.setText("Finished"); self.log.appendPlainText("Analysis finished.")
     def failed(self, message): self.status.setText("Failed"); self.log.appendPlainText(message); QtWidgets.QMessageBox.critical(self, "Analysis failed", message)
-    def cleanup(self): self.progress.hide(); self.worker = None; self.thread.deleteLater(); self.thread = None
+    def cleanup(self): self.progress.hide(); self.cancel_button.setEnabled(False); self.worker = None; self.thread.deleteLater(); self.thread = None
     def output(self):
         try: return Path(self.config()["output_dir"]).resolve()
         except Exception: return None

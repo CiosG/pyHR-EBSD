@@ -28,6 +28,19 @@ from pyhrebsd.rotations import sample_rotation_vector_mrad
 
 
 # -------------------------- CONFIG: edit these values --------------------------
+_CANCEL_EVENT = None
+
+
+def request_cancel():
+    """Request cooperative cancellation of the currently running analysis."""
+    if _CANCEL_EVENT is not None:
+        _CANCEL_EVENT.set()
+
+
+def _cancel_requested():
+    return _CANCEL_EVENT is not None and _CANCEL_EVENT.is_set()
+
+
 CONFIG = {
     # Required: select the run and its input/output.
     "run_mode": "analysis",  # "analysis" or "calibration" on a separate strain-free single-crystal scan
@@ -769,6 +782,9 @@ def _analyze_homography_batches(indices, batch_size):
                 number += 1
 
 def run(config=CONFIG):
+    global _CANCEL_EVENT
+    import threading
+    _CANCEL_EVENT = threading.Event()
     run_mode = config.get("run_mode", "analysis")
     if run_mode == "calibration":
         return run_beam_shift_calibration(config)
@@ -942,7 +958,12 @@ def run(config=CONFIG):
                     writer = csv.DictWriter(stream, fieldnames=_summary_fields())
                     writer.writeheader()
                     failures = 0
+                    cancelled = False
                     for count, (index, result, scan_pc, error) in enumerate(results, start=1):
+                        if _cancel_requested():
+                            cancelled = True
+                            print("Cancellation requested; stopping after the current results")
+                            break
                         row = {"scan_index": int(index), "reference_index": reference_index,
                                "column": index % reader.x_cells if reader.x_cells else "",
                                "row": index // reader.x_cells if reader.x_cells else "",
@@ -1025,7 +1046,7 @@ def run(config=CONFIG):
                                   f"{failures} failed; summary: {summary_path}")
             finally:
                 if executor is not None:
-                    executor.shutdown(wait=True)
+                    executor.shutdown(wait=not _cancel_requested(), cancel_futures=_cancel_requested())
     elif mode == "images":
         if int(config.get("pattern_binning", 1)) != 1:
             raise ValueError("pattern_binning currently requires a dataset input")
@@ -1056,6 +1077,8 @@ def run(config=CONFIG):
                          material)
     else:
         raise ValueError("input_mode must be 'dataset' or 'images'")
+    if _cancel_requested():
+        print("Analysis cancelled; partial results were retained")
     metadata = dict(config)
     metadata["software"] = "pyHREBSD"
     metadata["software_version"] = "development"
