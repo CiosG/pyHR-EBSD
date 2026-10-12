@@ -73,6 +73,15 @@ For homography line scans, set `homography_warm_start=True` to initialize each p
 
 Set `mechanical_constraint="traction_free"` for the standard free-surface solution or `mechanical_constraint="isochoric"` for a relative volume-preserving solution comparable to simulation-based deviatoric-strain analysis. The isochoric mode should not be used to interpret hydrostatic stress.
 
+The optional PySide6 GUI is started with:
+
+```powershell
+pip install -e ".[gui]"
+python pyhrebsd_gui.py
+```
+
+It exposes the complete `CONFIG` dictionary as JSON, so new analysis options do not require a second GUI implementation. It runs the analysis in a worker thread and can open the report and output folder. The GUI is an optional layer; the command-line/configuration workflow remains available.
+
 After an analysis run, `generate_report=True` creates `report.html`, `report_assets/`, `region_statistics.json`, and `rejected_points.csv`. Set `report_format="both"` to also create `report.pdf`. The report includes the saved configuration, quality maps, histograms, row profiles, region statistics, and rejected points.
 
 For a completed **homography** run, a different reference point can be selected without correlating the patterns again. The original run must contain `scan_results.csv` and `run_config.json`, and the new point must be present in that scan:

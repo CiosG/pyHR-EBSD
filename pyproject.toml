@@ -34,6 +34,7 @@ Issues = "https://github.com/CiosG/pyHREBSD/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+gui = ["PySide6>=6.6"]
 
 [project.scripts]
 pyhrebsd-shifts = "pyhrebsd.__main__:main"
