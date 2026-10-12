@@ -89,7 +89,7 @@ def _stats(rows):
     groups={"all":rows, "accepted":[r for r in rows if r.get("status")=="ok"], "rejected":[r for r in rows if r.get("status")!="ok"]}
     grain_ids={r.get("grain_id","") for r in rows if r.get("grain_id","") not in ("",None)}
     for gid in grain_ids: groups[f"grain_{gid}"]=[r for r in rows if r.get("grain_id")==gid]
-    keys=["strain_sample_11","strain_sample_22","strain_sample_33","rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
+    keys=["strain_sample_11","strain_sample_22","strain_sample_33","stress_sample_gpa_11","stress_sample_gpa_22","stress_sample_gpa_33","rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
     for name, subset in groups.items():
         item={"region":name,"points":len(subset)}
         for key in keys:
@@ -116,25 +116,36 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
         ("strain_sample_11", "E11"), ("strain_sample_12", "E12"),
         ("strain_sample_13", "E13"), ("strain_sample_22", "E22"),
         ("strain_sample_23", "E23"), ("strain_sample_33", "E33"),
+        ("stress_sample_gpa_11", "Stress S11 (GPa)"),
+        ("stress_sample_gpa_12", "Stress S12 (GPa)"),
+        ("stress_sample_gpa_13", "Stress S13 (GPa)"),
+        ("stress_sample_gpa_22", "Stress S22 (GPa)"),
+        ("stress_sample_gpa_23", "Stress S23 (GPa)"),
+        ("stress_sample_gpa_33", "Stress S33 (GPa)"),
         ("rotation_sample_1_mrad", "Rotation w1 (mrad)"),
         ("rotation_sample_2_mrad", "Rotation w2 (mrad)"),
         ("rotation_sample_3_mrad", "Rotation w3 (mrad)"),
     ]
     strain_keys=["strain_sample_11","strain_sample_12","strain_sample_13",
                  "strain_sample_22","strain_sample_23","strain_sample_33"]
+    stress_keys=["stress_sample_gpa_11","stress_sample_gpa_12","stress_sample_gpa_13",
+                 "stress_sample_gpa_22","stress_sample_gpa_23","stress_sample_gpa_33"]
     rotation_keys=["rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
     strain_limit=_symmetric_limits(plot_rows,strain_keys)
+    stress_limit=_symmetric_limits(plot_rows,stress_keys)
     rotation_limit=_symmetric_limits(plot_rows,rotation_keys)
     from matplotlib.colors import SymLogNorm, TwoSlopeNorm
     strain_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-strain_limit,vmax=strain_limit,base=10)
+    stress_norm=TwoSlopeNorm(vmin=-stress_limit,vcenter=0.0,vmax=stress_limit)
     rotation_norm=TwoSlopeNorm(vmin=-rotation_limit,vcenter=0.0,vmax=rotation_limit)
     for key,title in plot_specs:
         if any(key in r and r.get(key) not in ("",None) for r in plot_rows):
             name=key+".png"
-            norm=rotation_norm if key in rotation_keys else (strain_norm if key in strain_keys else None)
+            norm=(rotation_norm if key in rotation_keys else stress_norm if key in stress_keys else strain_norm if key in strain_keys else None)
             _plot(plot_rows,assets/name,key,title,norm=norm)
             plots.append((title, "report_assets/"+name))
     hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
+    shist=assets/"stress_histogram.png"; _hist(plot_rows,shist,stress_keys); plots.append(("Stress histograms","report_assets/stress_histogram.png"))
     rhist=assets/"rotation_histogram.png"; _hist(plot_rows,rhist,rotation_keys); plots.append(("Rotation histograms","report_assets/rotation_histogram.png"))
     stats=_stats(rows); (output/"region_statistics.json").write_text(json.dumps(stats,indent=2),encoding="utf-8")
     rejected=[r for r in rows if r.get("status")!="ok"];
