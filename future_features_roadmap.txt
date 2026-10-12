@@ -1,0 +1,122 @@
+﻿pyHREBSD - proponowane dalsze funkcje
+======================================
+
+Priorytet 1: wiarygodnosc wynikow
+
+1. Mapy niepewnosci
+--------------------
+Dla kazdego punktu zapisywac:
+- RMS bledu korelacji,
+- ZNSSD,
+- liczbe iteracji,
+- informacje o zbieznosci,
+- odchylenie standardowe z poszczegolnych ROI,
+- czulosc wyniku na zmiane PC.
+
+Generowac osobne mapy jakosci i niepewnosci obok map odksztalcen.
+
+2. Automatyczne odrzucanie zlych punktow
+----------------------------------------
+Oznaczac maska punkty z:
+- brakiem zbieznosci,
+- zbyt duzym residualem,
+- zbyt duzym przesunieciem ROI,
+- zbyt malym wspolczynnikiem korelacji,
+- niefizycznym det(F),
+- wartosciami odstepujacymi od sasiadow.
+
+3. Wiele patternow referencyjnych
+---------------------------------
+Dodac:
+- lokalne patterny referencyjne,
+- kilka referencji dla roznych obszarow,
+- automatyczny wybor najlepiej dopasowanej referencji,
+- referencje aktualizowana wzdluz skanu.
+
+4. Pelne statystyki ROI
+-----------------------
+Zapisywac wartosci z kazdego ROI przed agregacja, aby ocenic jednorodnosc
+wyniku i wykrywac pojedyncze wadliwe ROI.
+
+5. Analiza wplywu kalibracji PC
+------------------------------
+Automatycznie testowac wynik dla PC przesunietego o +/-1, +/-2 i +/-5 pikseli
+w PCX, PCY oraz odleglosci detektora. Generowac mapy wrazliwosci na blad PC.
+
+Priorytet 2: analiza mechaniczna
+
+6. GND i systemy poslizgu
+-------------------------
+Dodac:
+- gradienty odksztalcenia,
+- tensor Nye'a,
+- GND dla wybranych systemow poslizgu,
+- rozwiazanie najmniejszej liczby dyslokacji,
+- mapy gestosci dla konkretnych systemow poslizgu.
+
+Wymagane sa dobre mapy orientacji, krok mapy i jednoznaczna konwencja znakow.
+
+7. Rozdzielenie wynikow dewiatorowych i modelowych napręzen
+------------------------------------------------------------
+W wynikach rozroznic:
+- strain_relative,
+- strain_deviatoric,
+- stress_deviatoric,
+- stress_traction_free,
+- zastosowane ograniczenie mechaniczne.
+
+Napręzenia wynikajace z zalozenia nie powinny byc opisywane jako bezposredni pomiar.
+
+Priorytet 3: walidacja
+
+8. Automatyczna walidacja na wzorcach syntetycznych
+---------------------------------------------------
+Dodac testy dla:
+- patternu bez deformacji,
+- znanej homografii,
+- znanego obrotu,
+- znanego przesuniecia PC,
+- znanego odksztalcenia objetosciowego,
+- znanego odksztalcenia izochorycznego.
+
+Testy powinny byc uruchamiane po zmianach w GPU, binningu i korekcji tla.
+
+Priorytet 4: raportowanie
+
+9. Automatyczny raport HTML/PDF
+-------------------------------
+Raport powinien zawierac:
+- konfiguracje,
+- wersje kodu,
+- zrodlo PC,
+- korekcje tla,
+- rodzaj ograniczenia mechanicznego,
+- mapy jakosci,
+- histogramy,
+- profile,
+- statystyki regionow,
+- liste odrzuconych punktow.
+
+10. Porownanie wielu metod w jednym przebiegu
+---------------------------------------------
+Automatycznie porownywac:
+- ROI,
+- homografie,
+- hybrid,
+- traction-free,
+- isochoric,
+- rozne glebie bitowe,
+- rozne poziomy binningu.
+
+Generowac jedna tabele roznic oraz wspolne mapy porownawcze.
+
+Rekomendowana kolejnosc
+=======================
+1. Mapy niepewnosci i jakosci.
+2. Automatyczne maskowanie zlych punktow.
+3. Obsluga wielu patternow referencyjnych.
+4. Analiza wrazliwosci na PC.
+5. Automatyczne raporty.
+6. Walidacja syntetyczna.
+7. GND i systemy poslizgu.
+8. Rozbudowane porownania metod.

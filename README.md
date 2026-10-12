@@ -73,6 +73,8 @@ For homography line scans, set `homography_warm_start=True` to initialize each p
 
 Set `mechanical_constraint="traction_free"` for the standard free-surface solution or `mechanical_constraint="isochoric"` for a relative volume-preserving solution comparable to simulation-based deviatoric-strain analysis. The isochoric mode should not be used to interpret hydrostatic stress.
 
+`scan_results.csv` also contains uncertainty indicators for every successful point. ROI runs report the standard deviation of the accepted ROI shifts (`roi_shift_std_x`, `roi_shift_std_y`, `roi_shift_std_rms`), mean correlation quality, and an equivalent ROI ZNSSD estimate. Homography runs report ZNSSD, iteration count, and convergence. All methods report `pc_sensitivity_*` columns: the change in sample strain after perturbing each PC component by `uncertainty_pc_shift_pixels` (default: one detector pixel), with registration held fixed. These are sensitivity indicators rather than statistical confidence intervals.
+
 4. Select `"cpu"` or `"gpu"` separately for the chosen registration method.
    CPU analysis defaults to the number of logical processors minus one;
    set `workers=1` when validating a new configuration.

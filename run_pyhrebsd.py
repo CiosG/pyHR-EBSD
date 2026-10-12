@@ -14,7 +14,8 @@ from pyhrebsd.correlation import roi_size_from_percent
 from pyhrebsd.h5oina import H5OINAReader
 from pyhrebsd.edax import open_edax
 from pyhrebsd.tfs import TFSReader
-from pyhrebsd.homography import _ray_matrix, analyze_homography, prepare_homography
+from pyhrebsd.homography import (_ray_matrix, analyze_homography, deformation_from_homography,
+                                  prepare_homography)
 from pyhrebsd.hybrid import roi_remapped_initial_homography
 from pyhrebsd.io import read_pattern
 from pyhrebsd.pc_calibration import (fit_pc_plane, measure_effective_pixel_size,
@@ -40,6 +41,7 @@ CONFIG = {
     "pc_mode": "array",  # "single" repeats one PC; "array" uses per-point/source PC
     "material_name": "silicon",
     "mechanical_constraint": "traction_free",  # or "isochoric"
+    "uncertainty_pc_shift_pixels": 1.0,  # PC sensitivity probe in detector pixels
     "reference_map_point": None,  # None uses first stored pattern; or zero-based (column, row)
     "pattern_binning": 1,  # use 2, 4, or 8 for block-averaged patterns
     "edax_up2_file": None,  # input_file="map.ang" auto-uses "map.up2"; set a path if different
@@ -414,6 +416,42 @@ def _analyze(reference, scan, reference_pc, scan_pc, orientation, material, conf
     )
 
 
+def _pc_sensitivity(result, reference_pc, scan_pc, material, config, pattern_side):
+    """Estimate strain sensitivity to +/- one small PC perturbation.
+
+    Pattern registration is held fixed; only the geometry-to-strain inversion is
+    repeated. This isolates uncertainty caused by the PC rather than correlation.
+    """
+    shift = float(config.get("uncertainty_pc_shift_pixels", 1.0)) / pattern_side
+    base = result.orientation.T @ result.strain @ result.orientation
+    values = {}
+    for axis, label in enumerate(("pc_x", "pc_y", "pc_z")):
+        norms = []
+        for sign in (-1.0, 1.0):
+            perturbed = list(scan_pc)
+            perturbed[axis] += sign * shift
+            if hasattr(result, "homography"):
+                _, strain, _, _ = deformation_from_homography(
+                    result.homography, reference_pc, tuple(perturbed),
+                    result.orientation, np.deg2rad(config["sample_tilt_degrees"]),
+                    np.deg2rad(config["camera_elevation_degrees"]), material,
+                    pattern_side, config.get("phosphor_to_sample"),
+                    config.get("mechanical_constraint", "traction_free"))
+            else:
+                fitted = fit_deformation(
+                    result.shifts, pattern_side, reference_pc, tuple(perturbed),
+                    result.orientation, np.deg2rad(config["sample_tilt_degrees"]),
+                    np.deg2rad(config["camera_elevation_degrees"]), material,
+                    config["outlier_standard_deviation"],
+                    config.get("phosphor_to_sample"),
+                    config.get("mechanical_constraint", "traction_free"))
+                strain = fitted.strain
+            sample = result.orientation.T @ strain @ result.orientation
+            norms.append(float(np.linalg.norm(sample - base)))
+        values[label] = max(norms)
+    return values
+
+
 def _summary_fields():
     fields = ["scan_index", "reference_index", "column", "row", "grain_id",
               "pc_source", "pc_mode", "analysis_method", "mechanical_constraint",
@@ -423,6 +461,10 @@ def _summary_fields():
               "rms_shift_error_pixels", "used_rois", "total_rois",
               "roi_remapping", "first_pass_rms_shift_error_pixels",
               "remapping_rotation_mrad", "residual_rotation_mrad",
+              "roi_shift_std_x", "roi_shift_std_y", "roi_shift_std_rms",
+              "roi_coefficient_mean", "roi_confidence_mean", "roi_znssd_rms",
+              "pc_sensitivity_strain_rms", "pc_sensitivity_strain_max",
+              "pc_sensitivity_pc_x", "pc_sensitivity_pc_y", "pc_sensitivity_pc_z",
               "znssd_rms", "homography_iterations", "homography_converged",
               "pattern_center_x", "pattern_center_y", "pattern_center_z"]
     fields.extend(f"H_{i}{j}" for i in range(1, 4) for j in range(1, 4))
@@ -914,7 +956,23 @@ def run(config=CONFIG):
                                             "roi_remapping": result.first_pass_shifts is not None,
                                             "first_pass_rms_shift_error_pixels": result.first_pass_rms_shift_error,
                                             "remapping_rotation_mrad": result.remapping_rotation_mrad,
-                                            "residual_rotation_mrad": result.residual_rotation_mrad})
+                                            "residual_rotation_mrad": result.residual_rotation_mrad,
+                                            "roi_shift_std_x": result.roi_shift_std_x,
+                                            "roi_shift_std_y": result.roi_shift_std_y,
+                                            "roi_shift_std_rms": result.roi_shift_std_rms,
+                                            "roi_coefficient_mean": result.roi_coefficient_mean,
+                                            "roi_confidence_mean": result.roi_confidence_mean,
+                                            "roi_znssd_rms": result.roi_znssd_rms})
+                            pc_sensitivity = _pc_sensitivity(
+                                result, reference_pc, scan_pc, material, config, side)
+                            row.update({
+                                "pc_sensitivity_strain_rms": float(np.sqrt(np.mean(
+                                    np.square(list(pc_sensitivity.values()))))),
+                                "pc_sensitivity_strain_max": max(pc_sensitivity.values()),
+                                "pc_sensitivity_pc_x": pc_sensitivity["pc_x"],
+                                "pc_sensitivity_pc_y": pc_sensitivity["pc_y"],
+                                "pc_sensitivity_pc_z": pc_sensitivity["pc_z"],
+                            })
                             row.update({"pattern_center_x": scan_pc[0],
                                         "pattern_center_y": scan_pc[1],
                                         "pattern_center_z": scan_pc[2]})

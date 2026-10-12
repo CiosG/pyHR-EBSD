@@ -154,6 +154,12 @@ class DeformationResult:
     first_pass_rms_shift_error: float | None = None
     remapping_rotation_mrad: float | None = None
     residual_rotation_mrad: float | None = None
+    roi_shift_std_x: float | None = None
+    roi_shift_std_y: float | None = None
+    roi_shift_std_rms: float | None = None
+    roi_coefficient_mean: float | None = None
+    roi_confidence_mean: float | None = None
+    roi_znssd_rms: float | None = None
 
 
 @dataclass(frozen=True)
@@ -336,8 +342,26 @@ def fit_deformation(
     stress = np.einsum("ijkl,kl->ij", crystal_stiffness, strain)
     predicted = theoretical_pixel_shift(g, reference_pc, points, f, pixel_size, alpha, qps)
     error = np.sqrt(np.mean(np.sum((predicted[keep] - corrected[keep]) ** 2, axis=1)))
-    return DeformationResult(f, strain, stress, g, float(error), int(keep.sum()),
-                             len(shifts), tuple(shifts), keep)
+    kept_shifts = [shift for shift, accepted in zip(shifts, keep) if accepted]
+    if kept_shifts:
+        dx = np.asarray([shift.dx for shift in kept_shifts], dtype=float)
+        dy = np.asarray([shift.dy for shift in kept_shifts], dtype=float)
+        roi_std_x = float(np.std(dx, ddof=1)) if len(dx) > 1 else 0.0
+        roi_std_y = float(np.std(dy, ddof=1)) if len(dy) > 1 else 0.0
+        roi_std_rms = float(np.sqrt(np.mean((dx - np.mean(dx)) ** 2 +
+                                      (dy - np.mean(dy)) ** 2)))
+        roi_coefficient = float(np.mean([shift.coefficient for shift in kept_shifts]))
+        roi_confidence = float(np.mean([shift.peak_confidence for shift in kept_shifts]))
+        # For normalized correlation, ZNSSD^2 = 2(1 - ZNCC).
+        roi_znssd = float(np.sqrt(max(0.0, 2.0 * (1.0 - roi_coefficient))))
+    else:
+        roi_std_x = roi_std_y = roi_std_rms = roi_coefficient = roi_confidence = roi_znssd = float("nan")
+    return DeformationResult(
+        f, strain, stress, g, float(error), int(keep.sum()), len(shifts),
+        tuple(shifts), keep, roi_shift_std_x=roi_std_x,
+        roi_shift_std_y=roi_std_y, roi_shift_std_rms=roi_std_rms,
+        roi_coefficient_mean=roi_coefficient, roi_confidence_mean=roi_confidence,
+        roi_znssd_rms=roi_znssd)
 
 
 def analyze_pair(
