@@ -133,7 +133,7 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     with (output/"rejected_points.csv").open("w",newline="",encoding="utf-8") as f:
         w=csv.DictWriter(f,fieldnames=list(rows[0]) if rows else ["status","error"]); w.writeheader(); w.writerows(rejected)
     body=["<h1>PyHREBSD analysis report</h1>",f"<p>Points: {len(rows)}; accepted: {len(rows)-len(rejected)}; rejected: {len(rejected)}</p>","<h2>Configuration</h2>","<pre>"+html.escape(json.dumps(config,indent=2,ensure_ascii=False))+"</pre>","<h2>Region statistics</h2>","<pre>"+html.escape(json.dumps(stats,indent=2,ensure_ascii=False))+"</pre>","<h2>Plots</h2>"]
-    body += [f'<h3>{html.escape(t)}</h3><img src="{src}" style="max-width:900px"><br>' for t, src in plots]
+    body += [f'<h3>{html.escape(t)}</h3><img src="{src}" style="width:100%;max-width:1600px;height:auto"><br>' for t, src in plots]
     body += ['<h2>Rejected points</h2><p><a href="rejected_points.csv">rejected_points.csv</a></p>']
     report=output/"report.html"; report.write_text("<!doctype html><html><body>"+"\n".join(body)+"</body></html>",encoding="utf-8")
     if report_format.lower() in ("pdf","html_pdf","both"):
@@ -143,5 +143,12 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
         import matplotlib.pyplot as plt
         with PdfPages(output/"report.pdf") as pdf:
             for _,src in plots:
-                image=plt.imread(output/src); fig,ax=plt.subplots(figsize=(11,7)); ax.imshow(image); ax.axis("off"); pdf.savefig(fig); plt.close(fig)
+                image=plt.imread(output/src)
+                height, width = image.shape[:2]
+                fig_width = 11.0
+                fig_height = max(4.0, fig_width * height / width)
+                fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+                ax.imshow(image); ax.axis("off")
+                fig.subplots_adjust(0, 0, 1, 1)
+                pdf.savefig(fig); plt.close(fig)
     return report
