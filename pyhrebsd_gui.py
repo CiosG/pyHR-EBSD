@@ -8,13 +8,13 @@ try:
     from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError as exc:
     raise SystemExit("Install the optional GUI dependency first: pip install 'pyhrebsd[gui]'") from exc
-from run_pyhrebsd import CONFIG, request_cancel, run
+from run_pyhrebsd import CONFIG, request_cancel, run, _open_reader, _path
 
 CATEGORIES = {
     "Run and input": ["run_mode", "input_file", "output_dir", "generate_report", "report_format"],
     "Method and reference": ["analysis_method", "pattern_type", "h5_pc_source", "pc_mode", "material_name", "mechanical_constraint", "reference_map_point", "pattern_binning"],
     "Calibration": ["calibration_method", "calibration_line_extent_um", "calibration_line_spacing", "beam_shift_effective_pixel_size_um", "beam_shift_detector_x_sign"],
-    "Geometry and PC": ["material_database", "pattern_center_fallback", "detector_geometry", "reference_euler_degrees", "sample_tilt_degrees", "camera_elevation_degrees"],
+    "Geometry and PC": ["material_database", "detector_geometry", "reference_euler_degrees", "sample_tilt_degrees", "camera_elevation_degrees"],
     "Execution and output": ["workers", "save_per_pattern_files", "uncertainty_pc_shift_pixels"],
     "ROI": ["roi_device", "roi_gpu_device_id", "roi_gpu_workers", "gpu_batch_size", "roi_layout", "roi_size", "roi_size_percent", "roi_count", "roi_remapping", "roi_filter", "outlier_standard_deviation"],
     "Homography": ["homography_device", "homography_gpu_device_id", "homography_gpu_workers", "homography_gpu_batch_size", "homography_margin_fraction", "homography_max_iterations", "homography_prealignment", "homography_prealignment_roi_count", "homography_prealignment_roi_size_percent", "homography_prealignment_roi_layout", "homography_warm_start"],
@@ -50,11 +50,14 @@ class RunWorker(QtCore.QObject):
 
 class ConfigPage(QtWidgets.QWizardPage):
     def __init__(self, wizard, title, keys):
-        super().__init__(); self.wizard = wizard; self.setTitle(title)
+        super().__init__(); self.wizard = wizard; self.setTitle(title); self.field_rows = {}
         form = QtWidgets.QFormLayout(self); form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         for key in keys:
             if key not in CONFIG: continue
-            form.addRow(key, wizard.make_editor(key, CONFIG[key]))
+            editor = wizard.make_editor(key, CONFIG[key])
+            label = QtWidgets.QLabel(key)
+            form.addRow(label, editor)
+            self.field_rows[key] = (label, editor)
             if key == "input_file": form.addRow("Pattern availability", wizard.pattern_status)
         self.setLayout(form)
 
@@ -68,7 +71,7 @@ class PyHREBSDWizard(QtWidgets.QWizard):
         self.pages["input"] = ConfigPage(self, "Input file and run type", ["input_file", "output_dir", "run_mode", "generate_report", "report_format"])
         self.pages["method"] = ConfigPage(self, "Analysis method", ["analysis_method", "pattern_type", "h5_pc_source", "pc_mode", "material_name", "mechanical_constraint", "reference_map_point", "pattern_binning"])
         self.pages["calibration"] = ConfigPage(self, "Calibration", ["calibration_method", "calibration_line_extent_um", "calibration_line_spacing", "beam_shift_effective_pixel_size_um", "beam_shift_detector_x_sign"])
-        self.pages["geometry"] = ConfigPage(self, "Geometry and pattern center", ["material_database", "pattern_center_fallback", "detector_geometry", "reference_euler_degrees", "sample_tilt_degrees", "camera_elevation_degrees"])
+        self.pages["geometry"] = ConfigPage(self, "Geometry and pattern center", ["material_database", "detector_geometry", "reference_euler_degrees", "sample_tilt_degrees", "camera_elevation_degrees"])
         self.pages["execution"] = ConfigPage(self, "Execution and output", ["workers", "save_per_pattern_files", "uncertainty_pc_shift_pixels"])
         self.pages["roi"] = ConfigPage(self, "ROI settings", ["roi_device", "roi_gpu_device_id", "roi_gpu_workers", "gpu_batch_size", "roi_layout", "roi_size", "roi_size_percent", "roi_count", "roi_remapping", "roi_filter", "outlier_standard_deviation"])
         self.pages["homography"] = ConfigPage(self, "Homography settings", ["homography_device", "homography_gpu_device_id", "homography_gpu_workers", "homography_gpu_batch_size", "homography_margin_fraction", "homography_max_iterations", "homography_prealignment", "homography_prealignment_roi_count", "homography_prealignment_roi_size_percent", "homography_prealignment_roi_layout", "homography_warm_start"])
@@ -85,6 +88,9 @@ class PyHREBSDWizard(QtWidgets.QWizard):
         self.setButtonText(QtWidgets.QWizard.FinishButton,"Run analysis"); self.button(QtWidgets.QWizard.FinishButton).clicked.connect(self.accept)
         self.button(QtWidgets.QWizard.BackButton).clicked.connect(self.update_summary); self.button(QtWidgets.QWizard.NextButton).clicked.connect(self.update_summary)
         self.cancel_button.setEnabled(False); self.detect_gpu_default(); self.refresh_file_capabilities(str(CONFIG.get("input_file","")))
+        for key in ("pattern_type", "analysis_method"):
+            self.widgets[key].currentTextChanged.connect(self.refresh_context_visibility)
+        self.refresh_context_visibility()
 
     def nextId(self):
         key=self._page_key(self.currentId())
@@ -92,8 +98,10 @@ class PyHREBSDWizard(QtWidgets.QWizard):
         if key=="calibration": return self.ids["run"]
         if key=="method": return self.ids["geometry"]
         if key=="geometry": return self.ids["execution"]
-        if key=="execution": return self.ids["roi"]
-        if key=="roi": return self.ids["homography"]
+        if key=="execution":
+            return self.ids["homography"] if self.widgets["analysis_method"].currentText()=="homography" else self.ids["roi"]
+        if key=="roi":
+            return self.ids["preprocess"] if self.widgets["analysis_method"].currentText()=="roi" else self.ids["homography"]
         if key=="homography": return self.ids["preprocess"]
         if key=="preprocess": return self.ids["run"]
         return -1
@@ -148,6 +156,50 @@ class PyHREBSDWizard(QtWidgets.QWizard):
         for i in range(combo.count()): combo.model().item(i).setEnabled(combo.itemText(i) in available)
         if combo.currentText() not in available and available: combo.setCurrentText("processed" if "processed" in available else next(iter(available)))
         self.pattern_status.setText(detail)
+        self.refresh_geometry_fields(path)
+
+    def refresh_geometry_fields(self, path):
+        """Hide geometry overrides when the selected reader supplies metadata."""
+        page = self.pages.get("geometry")
+        if page is None:
+            return
+        for key in ("sample_tilt_degrees", "camera_elevation_degrees"):
+            row = page.field_rows.get(key)
+            if row:
+                row[0].setVisible(True)
+                row[1].setVisible(True)
+        if not path or not path.exists():
+            return
+        try:
+            with _open_reader(path, self.config()) as reader:
+                if reader.sample_tilt_degrees() is not None:
+                    label, editor = page.field_rows["sample_tilt_degrees"]
+                    label.setVisible(False); editor.setVisible(False)
+                if reader.camera_elevation_degrees() is not None:
+                    label, editor = page.field_rows["camera_elevation_degrees"]
+                    label.setVisible(False); editor.setVisible(False)
+        except Exception:
+            # Keep overrides available if the file is incomplete or still being edited.
+            return
+
+    def refresh_context_visibility(self):
+        """Keep only settings that apply to the current input and method."""
+        raw = self.widgets.get("pattern_type")
+        raw_enabled = bool(raw and raw.currentText() == "unprocessed")
+        page = self.pages.get("preprocess")
+        if page:
+            for key in ("unprocessed_background_mode", "unprocessed_background_sigma_pixels",
+                        "unprocessed_background_downsample", "unprocessed_static_sigma_factor",
+                        "unprocessed_lmsd_factor"):
+                row = page.field_rows.get(key)
+                if row:
+                    row[0].setVisible(raw_enabled); row[1].setVisible(raw_enabled)
+        method = self.widgets.get("analysis_method")
+        method_name = method.currentText() if method else "roi"
+        # A page can be skipped by nextId; hide it as well so the wizard never
+        # presents irrelevant controls during a transition.
+        self.pages["roi"].setVisible(method_name in ("roi", "hybrid"))
+        self.pages["homography"].setVisible(method_name in ("homography", "hybrid"))
 
     def detect_gpu_default(self):
         try:
@@ -161,7 +213,7 @@ class PyHREBSDWizard(QtWidgets.QWizard):
         if self.running: return
         try: config=self.config()
         except ValueError as exc: QtWidgets.QMessageBox.critical(self,"Configuration error",str(exc)); return
-        self.running=True; self.cancel_button.setEnabled(True); self.button(QtWidgets.QWizard.FinishButton).setEnabled(False); self.log.clear(); self.progress.show(); self.progress.setValue(0); self.worker=RunWorker(config); self.thread=QtCore.QThread(self); self.worker.moveToThread(self.thread); self.thread.started.connect(self.worker.execute); self.worker.message.connect(self.message); self.worker.finished.connect(self.finished); self.worker.failed.connect(self.failed); self.worker.finished.connect(self.thread.quit); self.worker.failed.connect(self.thread.quit); self.thread.finished.connect(self.cleanup); self.thread.start()
+        self.running=True; self.cancel_button.setEnabled(True); self.button(QtWidgets.QWizard.FinishButton).setEnabled(False); self.log.clear(); self.progress.show(); self.progress.setValue(0); self.worker=RunWorker(config); self.thread=QtCore.QThread(self); self.worker.moveToThread(self.thread); self.thread.started.connect(self.worker.execute); self.worker.message.connect(self.message); self.worker.finished.connect(self.run_finished); self.worker.failed.connect(self.run_failed); self.worker.finished.connect(self.thread.quit); self.worker.failed.connect(self.thread.quit); self.thread.finished.connect(self.cleanup); self.thread.start()
 
     def message(self,text):
         self.log.appendPlainText(text); import re; m=re.search(r"Processed\s+(\d+)/(\d+)\s+patterns",text)
@@ -169,8 +221,8 @@ class PyHREBSDWizard(QtWidgets.QWizard):
 
     def cancel_run(self):
         if self.running: request_cancel(); self.cancel_button.setEnabled(False); self.log.appendPlainText("Cancellation requested...")
-    def finished(self,_): self.progress.setValue(self.progress.maximum()); self.log.appendPlainText("Analysis finished."); self.running=False; self.button(QtWidgets.QWizard.FinishButton).setText("Close"); self.button(QtWidgets.QWizard.FinishButton).setEnabled(True)
-    def failed(self,msg): self.log.appendPlainText(msg); QtWidgets.QMessageBox.critical(self,"Analysis failed",msg); self.running=False; self.button(QtWidgets.QWizard.FinishButton).setEnabled(True)
+    def run_finished(self,_): self.progress.setValue(self.progress.maximum()); self.log.appendPlainText("Analysis finished."); self.running=False; self.button(QtWidgets.QWizard.FinishButton).setText("Close"); self.button(QtWidgets.QWizard.FinishButton).setEnabled(True)
+    def run_failed(self,msg): self.log.appendPlainText(msg); QtWidgets.QMessageBox.critical(self,"Analysis failed",msg); self.running=False; self.button(QtWidgets.QWizard.FinishButton).setEnabled(True)
     def cleanup(self): self.progress.hide(); self.cancel_button.setEnabled(False); self.worker=None; self.thread.deleteLater(); self.thread=None
 
 
