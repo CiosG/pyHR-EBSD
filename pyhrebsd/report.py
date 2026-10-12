@@ -19,7 +19,15 @@ def _float(row, key):
     except (TypeError, ValueError):
         return np.nan
 
-def _plot(rows, output, key, title, cmap="viridis"):
+def _symmetric_limits(rows, keys, percentile=99.5):
+    values=[]
+    for key in keys:
+        values.extend(_float(r,key) for r in rows)
+    values=np.asarray(values,dtype=float)
+    values=values[np.isfinite(values)]
+    return max(float(np.percentile(np.abs(values),percentile)) if values.size else 0.0,1e-12)
+
+def _plot(rows, output, key, title, cmap="RdBu_r", norm=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -33,7 +41,7 @@ def _plot(rows, output, key, title, cmap="viridis"):
         height = int(np.nanmax(y[valid])) + 1
         image = np.full((height, width), np.nan, dtype=float)
         image[y[valid].astype(int), x[valid].astype(int)] = z[valid]
-        shown = ax.imshow(image, origin="upper", interpolation="nearest", cmap=cmap)
+        shown = ax.imshow(image, origin="upper", interpolation="nearest", cmap=cmap, norm=norm)
         fig.colorbar(shown, ax=ax, label=key)
     ax.set_title(title); ax.set_xlabel("column"); ax.set_ylabel("row")
     ax.set_aspect("equal")
@@ -112,41 +120,22 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
         ("rotation_sample_2_mrad", "Rotation w2 (mrad)"),
         ("rotation_sample_3_mrad", "Rotation w3 (mrad)"),
     ]
-    for key,title in plot_specs:
-        if any(key in r and r.get(key) not in ("",None) for r in plot_rows):
-            name=key+".png"; _plot(plot_rows,assets/name,key,title); plots.append((title, "report_assets/"+name))
     strain_keys=["strain_sample_11","strain_sample_12","strain_sample_13",
                  "strain_sample_22","strain_sample_23","strain_sample_33"]
-    hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
     rotation_keys=["rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
+    strain_limit=_symmetric_limits(plot_rows,strain_keys)
+    rotation_limit=_symmetric_limits(plot_rows,rotation_keys)
+    from matplotlib.colors import SymLogNorm, TwoSlopeNorm
+    strain_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-strain_limit,vmax=strain_limit,base=10)
+    rotation_norm=TwoSlopeNorm(vmin=-rotation_limit,vcenter=0.0,vmax=rotation_limit)
+    for key,title in plot_specs:
+        if any(key in r and r.get(key) not in ("",None) for r in plot_rows):
+            name=key+".png"
+            norm=rotation_norm if key in rotation_keys else (strain_norm if key in strain_keys else None)
+            _plot(plot_rows,assets/name,key,title,norm=norm)
+            plots.append((title, "report_assets/"+name))
+    hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
     rhist=assets/"rotation_histogram.png"; _hist(plot_rows,rhist,rotation_keys); plots.append(("Rotation histograms","report_assets/rotation_histogram.png"))
-    for key,title in [("strain_sample_11","E11 row profile"),
-                      ("strain_sample_22","E22 row profile"),
-                      ("strain_sample_33","E33 row profile"),
-                      ("rotation_sample_1_mrad","w1 row profile"),
-                      ("rotation_sample_2_mrad","w2 row profile"),
-                      ("rotation_sample_3_mrad","w3 row profile")]:
-        name=key+"_profile.png"; _profile(plot_rows,assets/name,key); plots.append((title,"report_assets/"+name))
-    # Reuse the validated tensor-panel plotting style used by the previous
-    # full-scan figures: quality mask, sample-axis rotation, shared scales,
-    # and symmetric-log strain colors around zero.
-    try:
-        from plot_tensor_maps import KINDS, draw, load_result, shared_limit
-        panel = load_result(csv_path, 90.0, mask_bad_fit=True)
-        rotation_limit = shared_limit([panel["rotations"]], 99.5)
-        strain_limit = shared_limit([panel["tensors"][kind] for kind in KINDS], 99.5)
-        for kind in KINDS:
-            panel_path = assets / f"{kind}_strain_rotations_symlog.png"
-            draw(panel, kind, strain_limit, rotation_limit, panel_path, 99.5,
-                 step_um=float(config.get("map_step_um", 1.0)),
-                 strain_linthresh=0.5)
-            plots.append((f"{kind.title()} strain and lattice rotation (legacy panel style)",
-                          f"report_assets/{panel_path.name}"))
-    except Exception as exc:
-        # The standard per-component plots below remain available if the
-        # optional panel helper cannot be imported in a minimal installation.
-        config["panel_plot_warning"] = str(exc)
-
     stats=_stats(rows); (output/"region_statistics.json").write_text(json.dumps(stats,indent=2),encoding="utf-8")
     rejected=[r for r in rows if r.get("status")!="ok"];
     with (output/"rejected_points.csv").open("w",newline="",encoding="utf-8") as f:
