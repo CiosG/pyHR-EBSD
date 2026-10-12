@@ -1069,8 +1069,11 @@ def run(config=CONFIG):
     (output_dir / "run_config.json").write_text(
         json.dumps(metadata, indent=2, default=str), encoding="utf-8")
     if config.get("generate_report", True):
-        report = generate_report(output_dir, config.get("report_format", "html"))
-        print(f"Report: {report}")
+        if (output_dir / "scan_results.csv").exists():
+            report = generate_report(output_dir, config.get("report_format", "html"))
+            print(f"Report: {report}")
+        else:
+            print("Report skipped: this input mode does not produce scan_results.csv")
 
 
 if __name__ == "__main__":
