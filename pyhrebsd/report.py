@@ -155,6 +155,22 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
             norm=(rotation_norm if key in rotation_keys else stress_norm if key in stress_keys else deviatoric_norm if key in deviatoric_keys else strain_norm if key in strain_keys else None)
             _plot(plot_rows,assets/name,key,title,norm=norm)
             plots.append((title, "report_assets/"+name))
+    # Combined tensor panels from the established map layout.
+    try:
+        from plot_tensor_maps import KINDS, draw, load_result, shared_limit
+        panel = load_result(csv_path, 90.0, mask_bad_fit=True)
+        panel_rotation_limit = shared_limit([panel["rotations"]], 99.5)
+        panel_strain_limit = shared_limit([panel["tensors"][kind] for kind in KINDS], 99.5)
+        for kind in KINDS:
+            panel_path = assets / f"{kind}_strain_rotations_symlog.png"
+            draw(panel, kind, panel_strain_limit, panel_rotation_limit,
+                 panel_path, 99.5, step_um=float(config.get("map_step_um", 1.0)),
+                 strain_linthresh=0.5)
+            plots.append((f"{kind.title()} strain and lattice rotation",
+                          f"report_assets/{panel_path.name}"))
+    except Exception as exc:
+        config["panel_plot_warning"] = str(exc)
+
     hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
     shist=assets/"stress_histogram.png"; _hist(plot_rows,shist,stress_keys); plots.append(("Stress histograms","report_assets/stress_histogram.png"))
     rhist=assets/"rotation_histogram.png"; _hist(plot_rows,rhist,rotation_keys); plots.append(("Rotation histograms","report_assets/rotation_histogram.png"))
