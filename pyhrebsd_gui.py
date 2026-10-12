@@ -79,6 +79,26 @@ class MainWindow(QtWidgets.QMainWindow):
         central = QtWidgets.QWidget(); layout = QtWidgets.QVBoxLayout(central); layout.addLayout(buttons); layout.addWidget(self.tabs); layout.addWidget(self.log); self.setCentralWidget(central)
         self.sync_raw()
         self.refresh_file_capabilities(str(CONFIG.get("input_file", "")))
+        self.detect_gpu_default()
+
+    def detect_gpu_default(self):
+        """Use GPU as the GUI default only when CuPy can see a CUDA device."""
+        try:
+            import cupy as cp
+            count = int(cp.cuda.runtime.getDeviceCount())
+        except Exception:
+            count = 0
+        if count > 0:
+            for key in ("roi_device", "homography_device"):
+                widget = self.widgets.get(key)
+                if isinstance(widget, QtWidgets.QComboBox): widget.setCurrentText("gpu")
+            for key in ("roi_gpu_device_id", "homography_gpu_device_id"):
+                widget = self.widgets.get(key)
+                if isinstance(widget, QtWidgets.QLineEdit): widget.setText("0")
+            self.status.setText(f"GPU detected ({count} device(s)); GPU selected")
+        else:
+            self.status.setText("GPU not detected; CPU selected")
+        self.sync_raw()
 
     def _make_editor(self, key, value):
         if key in CHOICES:
