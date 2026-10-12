@@ -235,6 +235,11 @@ class PyHREBSDWizard(QtWidgets.QWizard):
                 self.widgets.get(k).setText("1")
 
     def accept(self):
+        # The Finish button is relabelled to Close after a successful run.
+        # Do not execute the analysis a second time when it is clicked.
+        if self.button(QtWidgets.QWizard.FinishButton).text() == "Close":
+            self.close()
+            return
         if self.running: return
         try: config=self.config()
         except ValueError as exc: QtWidgets.QMessageBox.critical(self,"Configuration error",str(exc)); return
