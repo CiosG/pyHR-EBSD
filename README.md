@@ -77,9 +77,11 @@ For large ROI scans, set `roi_device="gpu"` and use `gpu_batch_size="auto"` to c
 
 1. Open `run_pyhrebsd.py` and edit the required settings at the top of its
    `CONFIG` block.
-2. Set `input_file` to a `.tfs.hdf5`, `.h5oina`, `.oh5`, `.ang`, `.up2`, or `.bcf` file, then set a new `output_dir`,
+2. Set `input_file` to a `.tfs.hdf5`, `.h5oina`, `.oh5`, `.ang`, `.up2`, or `.bcf` file, then set a base `output_dir`,
    `analysis_method`, `pattern_type`, `pc_mode`, `material_name`,
    `reference_map_point`, and `pattern_binning`.
+By default, `timestamp_output_dir=True` appends `YYYYMMDD_HHMMSS` to the output folder name. For example, `results_roi_cpu` becomes `results_roi_cpu_20261014_164500`. If exact legacy paths are required, set it to `False`; an existing non-empty folder is still never overwritten.
+
 3. Leave geometry overrides as `None` to read sample tilt, reference
    orientation, and detector orientation from the dataset. The default
    `detector_geometry="full"` uses all three detector Euler angles for H5OINA

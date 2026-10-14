@@ -3,6 +3,7 @@
 import csv
 import json
 import os
+from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -45,7 +46,8 @@ CONFIG = {
     # Required: select the run and its input/output.
     "run_mode": "analysis",  # "analysis" or "calibration" on a separate strain-free single-crystal scan
     "input_file": "scan.h5oina",  # .tfs.hdf5, .h5oina, .oh5, .ang, .up2, or .bcf; relative or absolute
-    "output_dir": "results_roi_cpu",  # must be new; existing results are not overwritten
+    "output_dir": "results_roi_cpu",  # base name; timestamped automatically below
+    "timestamp_output_dir": True,  # append YYYYMMDD_HHMMSS to every new run folder
     "generate_report": True,  # create report.html after an analysis run
     "report_format": "html",  # "html", "pdf", or "both"
 
@@ -149,6 +151,17 @@ def _path(value):
     return path if path.is_absolute() else Path(__file__).resolve().parent / path
 
 
+def _timestamped_output_dir(base: Path) -> Path:
+    """Return a fresh output path with a local date/time suffix."""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = base.with_name(f"{base.name}_{stamp}")
+    counter = 1
+    while candidate.exists():
+        candidate = base.with_name(f"{base.name}_{stamp}_{counter:02d}")
+        counter += 1
+    return candidate
+
+
 def _input_path(config):
     value = config.get("input_file", config.get("h5oina_file"))
     if value is None:
@@ -223,7 +236,9 @@ def run_beam_shift_calibration(config):
     import matplotlib.pyplot as plt
 
     path = _input_path(config)
-    output = _path(config["output_dir"])
+    configured_output = _path(config["output_dir"])
+    output = (_timestamped_output_dir(configured_output)
+              if config.get("timestamp_output_dir", False) else configured_output)
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"Refusing to overwrite calibration: {output}")
     with _open_reader(path, config) as reader:
@@ -799,11 +814,15 @@ def run(config=CONFIG):
         raise ValueError("set material_database and material_name")
     configured_euler = config["reference_euler_degrees"]
     orientation = None if configured_euler is None else np.deg2rad(configured_euler)
-    output_dir = _path(config["output_dir"])
+    configured_output_dir = _path(config["output_dir"])
+    output_dir = (_timestamped_output_dir(configured_output_dir)
+                  if config.get("timestamp_output_dir", False) else configured_output_dir)
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite analysis results: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata = dict(config)
+    metadata["configured_output_dir"] = str(configured_output_dir)
+    metadata["output_dir"] = str(output_dir)
     metadata["software"] = "pyHREBSD"
     metadata["software_version"] = "development"
     try:
@@ -1084,6 +1103,8 @@ def run(config=CONFIG):
     if _cancel_requested():
         print("Analysis cancelled; partial results were retained")
     metadata = dict(config)
+    metadata["configured_output_dir"] = str(configured_output_dir)
+    metadata["output_dir"] = str(output_dir)
     metadata["software"] = "pyHREBSD"
     metadata["software_version"] = "development"
     try:
