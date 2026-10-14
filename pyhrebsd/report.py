@@ -84,12 +84,62 @@ def _profile(rows, output, key):
     fig,ax=plt.subplots(figsize=(8,4)); ax.plot(y,vals,".-"); ax.set_xlabel("row"); ax.set_ylabel(key); ax.set_title(f"Row profile: {key}"); ax.grid(alpha=.3)
     fig.tight_layout(); fig.savefig(output,dpi=160); plt.close(fig)
 
+def _compute_kam(rows, threshold_degrees=5.0):
+    """Return HR-EBSD KAM map and neighbour counts for a rectangular result grid."""
+    from pyhrebsd.kam import hr_kam
+    if not rows:
+        return None, None
+    try:
+        height = max(int(r["row"]) for r in rows) + 1
+        width = max(int(r["column"]) for r in rows) + 1
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    vectors = np.full((height, width, 3), np.nan, dtype=float)
+    valid = np.zeros((height, width), dtype=bool)
+    grains = np.zeros((height, width), dtype=np.int32)
+    for row in rows:
+        try:
+            y, x = int(row["row"]), int(row["column"])
+            vector = np.array([_float(row, f"rotation_sample_{i}_mrad")
+                               for i in range(1, 4)], dtype=float)
+            grain = int(float(row.get("grain_id", 0) or 0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0 <= y < height and 0 <= x < width:
+            vectors[y, x] = vector
+            grains[y, x] = grain
+            valid[y, x] = row.get("status") == "ok" and grain > 0 and np.all(np.isfinite(vector))
+    if not np.any(valid):
+        return None, None
+    return hr_kam(vectors, valid, grains, threshold_degrees), (vectors, valid, grains)
+
+
+def _kam_hist(kam, output):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    values = np.asarray(kam, dtype=float)
+    values = values[np.isfinite(values)]
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    if values.size:
+        low, high = np.percentile(values, [1.0, 99.0])
+        if low == high:
+            low, high = float(values.min()), float(values.max())
+        if low == high:
+            high = low + 1e-12
+        ax.hist(values, bins=120, range=(low, high), color="#d95f02", alpha=.8)
+        ax.set_xlim(low, high)
+    ax.set_title("HR-EBSD KAM distribution (1st?99th percentile)")
+    ax.set_xlabel("KAM (degrees)"); ax.set_ylabel("points")
+    fig.tight_layout(); fig.savefig(output, dpi=180); plt.close(fig)
+
+
 def _stats(rows):
     out=[]
     groups={"all":rows, "accepted":[r for r in rows if r.get("status")=="ok"], "rejected":[r for r in rows if r.get("status")!="ok"]}
     grain_ids={r.get("grain_id","") for r in rows if r.get("grain_id","") not in ("",None)}
     for gid in grain_ids: groups[f"grain_{gid}"]=[r for r in rows if r.get("grain_id")==gid]
-    keys=["strain_sample_11","strain_sample_22","strain_sample_33","stress_sample_gpa_11","stress_sample_gpa_22","stress_sample_gpa_33","rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad"]
+    keys=["strain_sample_11","strain_sample_22","strain_sample_33","stress_sample_gpa_11","stress_sample_gpa_22","stress_sample_gpa_33","rotation_sample_1_mrad","rotation_sample_2_mrad","rotation_sample_3_mrad", "hr_kam_degrees"]
     for name, subset in groups.items():
         item={"region":name,"points":len(subset)}
         for key in keys:
@@ -144,7 +194,7 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     deviatoric_limit=_symmetric_limits(plot_rows,deviatoric_keys)
     stress_limit=_symmetric_limits(plot_rows,stress_keys)
     rotation_limit=_symmetric_limits(plot_rows,rotation_keys)
-    from matplotlib.colors import SymLogNorm, TwoSlopeNorm
+    from matplotlib.colors import SymLogNorm, TwoSlopeNorm, Normalize
     strain_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-strain_limit,vmax=strain_limit,base=10)
     deviatoric_norm=SymLogNorm(linthresh=0.5e-3,linscale=1.0,vmin=-deviatoric_limit,vmax=deviatoric_limit,base=10)
     stress_norm=TwoSlopeNorm(vmin=-stress_limit,vcenter=0.0,vmax=stress_limit)
@@ -174,6 +224,32 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     hist=assets/"strain_histogram.png"; _hist(plot_rows,hist,strain_keys); plots.append(("Strain histograms","report_assets/strain_histogram.png"))
     shist=assets/"stress_histogram.png"; _hist(plot_rows,shist,stress_keys); plots.append(("Stress histograms","report_assets/stress_histogram.png"))
     rhist=assets/"rotation_histogram.png"; _hist(plot_rows,rhist,rotation_keys); plots.append(("Rotation histograms","report_assets/rotation_histogram.png"))
+    kam_result, kam_inputs = _compute_kam(plot_rows, float(config.get("hr_kam_neighbor_misorientation_limit_degrees", 5.0)))
+    if kam_result is not None:
+        kam_map, kam_neighbors = kam_result
+        for row in plot_rows:
+            try:
+                y, x = int(row["row"]), int(row["column"])
+                value = kam_map[y, x]
+                row["hr_kam_degrees"] = str(float(value)) if np.isfinite(value) else ""
+            except (KeyError, TypeError, ValueError, IndexError):
+                row["hr_kam_degrees"] = ""
+        kam_values = kam_map[np.isfinite(kam_map)]
+        kam_limit = max(float(np.percentile(kam_values, 99.5)) if kam_values.size else 1e-12, 1e-12)
+        kam_norm = Normalize(vmin=0.0, vmax=kam_limit)
+        kam_path = assets / "hr_kam.png"
+        _plot(plot_rows, kam_path, "hr_kam_degrees", "HR-EBSD KAM (degrees)", cmap="inferno", norm=kam_norm)
+        plots.append(("HR-EBSD KAM map", "report_assets/hr_kam.png"))
+        kam_hist = assets / "hr_kam_histogram.png"
+        _kam_hist(kam_map, kam_hist)
+        plots.append(("HR-EBSD KAM histogram", "report_assets/hr_kam_histogram.png"))
+        config["hr_kam_report"] = {"neighbor_connectivity": 4,
+                                    "same_grain_only": True,
+                                    "neighbor_misorientation_limit_degrees": float(config.get("hr_kam_neighbor_misorientation_limit_degrees", 5.0)),
+                                    "points_with_kam": int(kam_values.size),
+                                    "median_degrees": float(np.median(kam_values)) if kam_values.size else None,
+                                    "p99_degrees": float(np.percentile(kam_values, 99)) if kam_values.size else None,
+                                    "maximum_degrees": float(np.max(kam_values)) if kam_values.size else None}
     stats=_stats(rows); (output/"region_statistics.json").write_text(json.dumps(stats,indent=2),encoding="utf-8")
     rejected=[r for r in rows if r.get("status")!="ok"];
     with (output/"rejected_points.csv").open("w",newline="",encoding="utf-8") as f:
