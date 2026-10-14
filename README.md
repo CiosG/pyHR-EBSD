@@ -31,7 +31,7 @@ correlation, raw-pattern preprocessing, and homography fitting.
 
 ## Installation
 
-Python 3.10 or newer is required.
+Python 3.10 or newer is required. Python 3.10?3.13 are covered by the automated test matrix; Python 3.13 is also supported for the GPU and GUI extras when compatible wheels are available.
 
 ```powershell
 git clone https://github.com/CiosG/pyHREBSD.git PyHREBSD
