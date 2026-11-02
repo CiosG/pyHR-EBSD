@@ -19,7 +19,9 @@ import h5py
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pyhrebsd.slip_systems import FCC_MATERIAL_KEYS, write_fcc_systems
+from pyhrebsd.slip_systems import (
+    BCC_MATERIAL_KEYS, FCC_MATERIAL_KEYS, write_bcc_systems, write_fcc_systems,
+)
 
 
 NIST_TITLE = (
@@ -292,6 +294,9 @@ def write_record(parent: h5py.Group, slug: str, name: str, crystal_system: str,
     if slug in FCC_MATERIAL_KEYS:
         write_fcc_systems(group)
         group.attrs["slip_system_family"] = "fcc_a_over_2_110_111"
+    elif slug in BCC_MATERIAL_KEYS:
+        write_bcc_systems(group)
+        group.attrs["slip_system_family"] = "bcc_110_112_123_111"
     return group
 
 

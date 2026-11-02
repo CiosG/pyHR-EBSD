@@ -25,6 +25,11 @@ FCC_MATERIAL_KEYS = frozenset({
     "thorium",
 })
 
+BCC_MATERIAL_KEYS = frozenset({
+    "chromium", "iron_bcc", "lithium", "molybdenum", "niobium",
+    "potassium", "rubidium", "sodium", "tungsten", "vanadium",
+})
+
 
 def fcc_system_records() -> dict[str, np.ndarray]:
     """Return the 18 standard FCC ``a/2<110>{111}`` systems.
@@ -118,6 +123,97 @@ def write_fcc_systems(group: h5py.Group) -> None:
     )
 
 
+def bcc_system_records() -> dict[str, np.ndarray]:
+    """Return the 48 conventional BCC slip systems.
+
+    The families are ``{110}<111>`` (12), ``{112}<111>`` (12), and
+    ``{123}<111>`` (24).  ``line_direction`` stores the crystallographic slip
+    direction, not a claim that every dislocation is screw; the actual line
+    character and activity must be selected by the GND model or experiment.
+    """
+    directions = ((1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1))
+
+    def unique_planes(values: tuple[int, int, int]) -> list[tuple[int, int, int]]:
+        result: set[tuple[int, int, int]] = set()
+        from itertools import permutations, product
+        for permutation in set(permutations(values)):
+            for signs in product((-1, 1), repeat=3):
+                vector = tuple(a * b for a, b in zip(permutation, signs))
+                first = next(value for value in vector if value)
+                if first < 0:
+                    vector = tuple(-value for value in vector)
+                result.add(vector)
+        return sorted(result)
+
+    families = (("110", (1, 1, 0)), ("112", (1, 1, 2)),
+                ("123", (1, 2, 3)))
+    names: list[str] = []
+    kinds: list[str] = []
+    burgers: list[np.ndarray] = []
+    lines: list[np.ndarray] = []
+    normals: list[np.ndarray] = []
+    family_names: list[str] = []
+    for family, values in families:
+        for plane in unique_planes(values):
+            normal = np.asarray(plane, dtype=float)
+            normal /= np.linalg.norm(normal)
+            for direction in directions:
+                d = np.asarray(direction, dtype=float)
+                if abs(np.dot(plane, direction)) > 0:
+                    continue
+                names.append(
+                    f"({plane[0]}{plane[1]}{plane[2]})"
+                    f"[{direction[0]}{direction[1]}{direction[2]}] {family}"
+                )
+                kinds.append("slip")
+                burgers.append(d / 2.0)
+                lines.append(d / np.linalg.norm(d))
+                normals.append(normal)
+                family_names.append(f"{{{family}}}<111>")
+    result = {
+        "names": np.asarray(names, dtype=object),
+        "kind": np.asarray(kinds, dtype=object),
+        "family": np.asarray(family_names, dtype=object),
+        "burgers_fractional": np.asarray(burgers, dtype=float),
+        "line_direction": np.asarray(lines, dtype=float),
+        "plane_normal": np.asarray(normals, dtype=float),
+    }
+    counts = {family: family_names.count(f"{{{family}}}<111>") for family, _ in families}
+    if counts != {"110": 12, "112": 12, "123": 24}:
+        raise AssertionError(f"unexpected BCC family counts: {counts}")
+    return result
+
+
+def write_bcc_systems(group: h5py.Group) -> None:
+    """Create or replace the conventional BCC slip-system group."""
+    if "slip_systems" in group:
+        del group["slip_systems"]
+    records = bcc_system_records()
+    systems = group.create_group("slip_systems")
+    string_type = h5py.string_dtype("utf-8")
+    systems.create_dataset("name", data=np.asarray(records["names"], dtype=string_type))
+    for key in ("kind", "family"):
+        systems.create_dataset(key, data=np.asarray(records[key], dtype=string_type))
+    for key in ("burgers_fractional", "line_direction", "plane_normal"):
+        systems.create_dataset(key, data=records[key])
+    systems.attrs["family"] = "BCC {110}<111> + {112}<111> + {123}<111>"
+    systems.attrs["system_count"] = 48
+    systems.attrs["family_counts"] = "{110}<111>:12; {112}<111>:12; {123}<111>:24"
+    systems.attrs["coordinate_convention"] = (
+        "cubic crystal axes; burgers_fractional is in unit-cell fractions; "
+        "line_direction is the crystallographic slip direction"
+    )
+    systems.attrs["burgers_unit"] = "fractional cubic unit-cell coordinates"
+    systems.attrs["activity_note"] = (
+        "All systems are candidates. Activity is not inferred from elastic constants; "
+        "use a phase/stress criterion or a sparse GND fit to select active systems."
+    )
+    systems.attrs["source"] = (
+        "Conventional BCC slip families generated from Miller indices; "
+        "no material-specific CRSS values are implied"
+    )
+
+
 def add_fcc_systems_to_file(path: str) -> list[str]:
     """Assign the FCC family to all selected FCC material records in an HDF5 file."""
     updated: list[str] = []
@@ -128,6 +224,12 @@ def add_fcc_systems_to_file(path: str) -> list[str]:
                 continue
             write_fcc_systems(materials[key])
             materials[key].attrs["slip_system_family"] = "fcc_a_over_2_110_111"
+            updated.append(key)
+        for key in sorted(BCC_MATERIAL_KEYS):
+            if key not in materials:
+                continue
+            write_bcc_systems(materials[key])
+            materials[key].attrs["slip_system_family"] = "bcc_110_112_123_111"
             updated.append(key)
         file.attrs["schema_version"] = "1.1"
         file.attrs["slip_systems_schema"] = (

@@ -1,4 +1,4 @@
-"""Assign standard FCC slip systems to FCC phases in materials.h5."""
+"""Assign standard FCC and BCC slip systems to phases in materials.h5."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     updated = add_fcc_systems_to_file(str(args.path))
-    print(f"Updated {len(updated)} FCC phases in {args.path}")
+    print(f"Updated {len(updated)} FCC/BCC phases in {args.path}")
     print("  " + ", ".join(updated))
 
 

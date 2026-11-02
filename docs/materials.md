@@ -85,3 +85,9 @@ To reapply the assignment to a copied database:
 ```powershell
 python tools/add_fcc_slip_systems.py path\to\materials.h5
 ```
+
+The BCC records additionally contain the conventional candidate families
+`{110}<111>`, `{112}<111>`, and `{123}<111>` (12, 12, and 24 systems). These
+are candidate geometries, not a declaration that all systems are active. The
+database does not contain critical resolved shear stresses, so activity must
+be selected from the phase, loading state, or a constrained/sparse GND fit.
