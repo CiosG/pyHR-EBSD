@@ -246,6 +246,65 @@ def isotropic_line_energy_weights(
     return weights / minimum
 
 
+def anisotropic_directional_line_energy_weights(
+        types: tuple[DislocationType, ...], stiffness_pa: ArrayLike,
+        poisson_ratio: float = 0.28, outer_cutoff_m: float = 100e-9,
+        core_radius_factor: float = 2.0,
+        core_energy_j_per_m: ArrayLike | None = None
+        ) -> NDArray[np.float64]:
+    """Experimental directional anisotropic line-energy weights.
+
+    This is a test approximation, not a full Stroh/Barnett-Lothe solution. It
+    contracts the complete crystal-frame ``C_ijkl`` tensor with the line and
+    Burgers directions to obtain directional shear moduli for edge and screw
+    components. It is useful for sensitivity studies and is explicitly kept
+    separate from the validated isotropic Wilkinson-Randman-style model.
+    """
+    c = np.asarray(stiffness_pa, dtype=float)
+    if c.shape != (3, 3, 3, 3) or np.any(~np.isfinite(c)):
+        raise ValueError("stiffness_pa must be a finite 3x3x3x3 tensor")
+    if not 0 <= poisson_ratio < 0.5:
+        raise ValueError("poisson_ratio must be between 0 and 0.5")
+    values = []
+    for kind in types:
+        b = np.asarray(kind.burgers_crystal_m, dtype=float)
+        xi = np.asarray(kind.line_crystal, dtype=float)
+        b_norm, xi_norm = np.linalg.norm(b), np.linalg.norm(xi)
+        if b_norm <= 0 or xi_norm <= 0:
+            raise ValueError(f"invalid Burgers or line vector for {kind.name}")
+        xi /= xi_norm
+        b_s = np.dot(b, xi) * xi
+        b_e = b - b_s
+        # Directional shear modulus C_{p xi p xi}; average the two transverse
+        # directions for the screw component because its radial direction is
+        # not unique.
+        trial = np.eye(3)[np.argmin(np.abs(np.eye(3) @ xi))]
+        q1 = trial - np.dot(trial, xi) * xi
+        q1 /= np.linalg.norm(q1)
+        q2 = np.cross(xi, q1)
+        mu_s = 0.5 * sum(np.einsum("i,j,k,l,ijkl->", q, xi, q, xi, c)
+                         for q in (q1, q2))
+        if np.linalg.norm(b_e) > 0:
+            p = b_e / np.linalg.norm(b_e)
+            mu_e = np.einsum("i,j,k,l,ijkl->", p, xi, p, xi, c)
+        else:
+            mu_e = mu_s
+        mu_s, mu_e = max(float(mu_s), 1e-12), max(float(mu_e), 1e-12)
+        bs2, be2 = np.dot(b_s, b_s), np.dot(b_e, b_e)
+        r0 = core_radius_factor * b_norm
+        logarithm = max(np.log(max(outer_cutoff_m / r0, 1.0000001)), 1e-12)
+        values.append((mu_s * bs2 + mu_e * be2 / (1.0 - poisson_ratio)) /
+                      (4.0 * np.pi) * logarithm)
+    weights = np.asarray(values, dtype=float)
+    if core_energy_j_per_m is not None:
+        core = np.asarray(core_energy_j_per_m, dtype=float)
+        if core.shape != weights.shape or np.any(~np.isfinite(core)) or np.any(core < 0):
+            raise ValueError("core_energy_j_per_m must match types and be nonnegative")
+        weights += core
+    minimum = float(np.min(weights[weights > 0]))
+    return weights / minimum
+
+
 def solve_gnd_l1(observables_per_m: ArrayLike, matrix_m: ArrayLike,
                  types: tuple[DislocationType, ...], poisson_ratio: float = 0.28
                  , weights: ArrayLike | None = None

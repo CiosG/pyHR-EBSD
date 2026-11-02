@@ -21,6 +21,7 @@ import numpy as np
 from pyhrebsd.geometry import euler_to_matrix
 from pyhrebsd.analysis import Material
 from pyhrebsd.gnd import (dislocation_matrix, fcc_perfect_dislocations,
+                         anisotropic_directional_line_energy_weights,
                          isotropic_line_energy_weights, partial_nye_from_maps, solve_gnd_l1,
                          wurtzite_dislocations, zincblende_perfect_dislocations)
 from pyhrebsd.slip_systems import active_system_mask
@@ -190,7 +191,7 @@ def main() -> None:
                                                 "silicon_carbide_4h", "gallium_nitride_wurtzite"),
                         default="silicon")
     parser.add_argument("--poisson-ratio", type=float, default=0.28)
-    parser.add_argument("--energy-model", choices=("isotropic_line", "legacy"),
+    parser.add_argument("--energy-model", choices=("isotropic_line", "anisotropic_directional_test", "legacy"),
                         default="isotropic_line",
                         help="GND objective weights: line energy or legacy edge/screw")
     parser.add_argument("--outer-cutoff-nm", type=float, default=100.0,
@@ -224,6 +225,12 @@ def main() -> None:
     if args.energy_model == "isotropic_line":
         weights = isotropic_line_energy_weights(
             types, shear_modulus_pa, poisson_ratio,
+            args.outer_cutoff_nm * 1e-9, args.core_radius_factor,
+            np.full(len(types), args.core_energy_j_per_m),
+        )
+    elif args.energy_model == "anisotropic_directional_test":
+        weights = anisotropic_directional_line_energy_weights(
+            types, material_record.stiffness() * 1e9, poisson_ratio,
             args.outer_cutoff_nm * 1e-9, args.core_radius_factor,
             np.full(len(types), args.core_energy_j_per_m),
         )

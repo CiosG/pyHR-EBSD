@@ -134,6 +134,7 @@ cubic coordinate conversion.
 ```powershell
 python calculate_gnd.py results --material silicon_carbide_4h --energy-model isotropic_line
 python calculate_gnd.py results --material silicon_carbide_4h --energy-model legacy
+python calculate_gnd.py results --material silicon_carbide_4h --energy-model anisotropic_directional_test
 ```
 
 `isotropic_line` is the default. For Burgers vector `b`, line direction `xi`,
@@ -150,6 +151,13 @@ weights by the smallest positive energy before L1 minimization, so only
 relative line energies affect the result. The shear modulus is the mean of
 C44, C55, and C66 from the selected material record. This is an isotropic
 approximation, not a full anisotropic Stroh solution.
+
+`anisotropic_directional_test` is an experimental sensitivity mode. It uses
+the complete crystal-frame `C_ijkl` tensor and contracts it with each line
+direction to estimate directional edge and screw shear moduli. It is not yet
+the exact Stroh/Barnett--Lothe solution, so it must not be presented as a
+validated anisotropic line-energy calculation. Its purpose is to quantify how
+much the GND result changes when crystal anisotropy is included.
 
 The tunable parameters are `--outer-cutoff-nm`, `--core-radius-factor`, and
 `--core-energy-j-per-m`. The default core energy is zero because no verified
