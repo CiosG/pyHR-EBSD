@@ -219,7 +219,12 @@ results before selecting production settings.
 The deformation solve first produces crystal-frame tensors. The output CSV
 also stores strain, stress, deviatoric strain, and rotation in the sample
 frame. Plotting utilities can apply an additional in-plane sample-axis basis
-rotation for comparison with external figures.
+rotation for comparison with external figures. This is a change of tensor
+basis, not a physical correction. In particular, a +90 degree in-plane
+rotation gives approximately `E13_displayed = -E23_stored` and
+`E23_displayed = E13_stored` (and similarly for the rotation-vector
+components). Therefore the default report and tensor export use 0 degrees;
+request a nonzero rotation explicitly only when matching an external figure.
 
 Real-pattern strain and rotation are relative to the selected reference
 pattern. A strained or rotated reference shifts the zero of every map.
