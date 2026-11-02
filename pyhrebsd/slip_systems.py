@@ -45,7 +45,7 @@ SEMICONDUCTOR_SLIP_FAMILIES = {
         ),
     },
     "silicon_carbide_3c": {
-        "families": (("zincblende_111_110", "{111}", "<110>", "1/2<110>", "https://www.sciencedirect.com/science/article/pii/S2238785423031423"),),
+        "families": (("zincblende_111_110", "{111}", "<110>", "1/2<110>", "3c_sic_slip_2023"),),
         "references": (("3c_sic_slip_2023", "Atomic study on deformation behavior and anisotropy effect of 3C-SiC under nanoindentation", "https://www.sciencedirect.com/science/article/pii/S2238785423031423"),),
     },
     "gallium_nitride_wurtzite": {
