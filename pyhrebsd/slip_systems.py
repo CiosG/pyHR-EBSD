@@ -53,12 +53,12 @@ SEMICONDUCTOR_SLIP_FAMILIES = {
             ("basal_a", "{0001}", "<11-20>", "1/3<11-20>", "10.1063/1.4939907"),
             ("prismatic_a_I", "{10-10}", "<11-20>", "1/3<11-20>", "10.1063/1.4939907"),
             ("prismatic_a_II", "{11-20}", "<10-10>", "1/3<10-10>", "10.1063/1.4939907"),
-            ("pyramidal_ca_I", "{10-11}", "<11-23>", "1/3<11-23>", "10.11524/jpsj.76.044602"),
-            ("pyramidal_ca_II", "{11-22}", "<11-23>", "1/3<11-23>", "10.11524/jpsj.76.044602"),
+            ("pyramidal_ca_I", "{10-11}", "<11-23>", "1/3<11-23>", "10.1038/s41524-024-01456-7"),
+            ("pyramidal_ca_II", "{11-22}", "<11-23>", "1/3<11-23>", "10.1038/s41524-024-01456-7"),
         ),
         "references": (
             ("10.1063/1.4939907", "Critical thickness for the formation of misfit dislocations originating from prismatic slip in semipolar and nonpolar III-nitride heterostructures", "https://doi.org/10.1063/1.4939907"),
-            ("10.11524/jpsj.76.044602", "Iwata et al., Dislocation plasticity in wurtzite GaN", "https://doi.org/10.1143/JPSJ.76.044602"),
+            ("10.1038/s41524-024-01456-7", "Neural network potential for dislocation plasticity in ceramics", "https://doi.org/10.1038/s41524-024-01456-7"),
         ),
     },
 }
