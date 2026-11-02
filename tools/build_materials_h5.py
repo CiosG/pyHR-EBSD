@@ -11,11 +11,15 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import sys
 import unicodedata
 from pathlib import Path
 
 import h5py
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from pyhrebsd.slip_systems import FCC_MATERIAL_KEYS, write_fcc_systems
 
 
 NIST_TITLE = (
@@ -285,6 +289,9 @@ def write_record(parent: h5py.Group, slug: str, name: str, crystal_system: str,
             compression="gzip", compression_opts=4, shuffle=True, fletcher32=True)
         uncertainty_data.attrs["unit"] = "GPa"
         uncertainty_data.attrs["component_labels_path"] = "/component_labels"
+    if slug in FCC_MATERIAL_KEYS:
+        write_fcc_systems(group)
+        group.attrs["slip_system_family"] = "fcc_a_over_2_110_111"
     return group
 
 
@@ -297,7 +304,7 @@ def build(source: Path, output: Path) -> dict[str, int]:
               "added_compounds": 0}
     with h5py.File(output, "w") as file:
         file.attrs["schema_name"] = "PyHREBSD elastic materials"
-        file.attrs["schema_version"] = "1.0"
+        file.attrs["schema_version"] = "1.1"
         file.attrs["stiffness_unit"] = "GPa"
         file.attrs["voigt_order"] = ",".join(VOIGT_LABELS)
         file.attrs["matrix_indexing"] = (
@@ -308,6 +315,9 @@ def build(source: Path, output: Path) -> dict[str, int]:
         file.attrs["notes"] = (
             "Elastic constants depend on temperature, phase, purity and measurement method. "
             "This distribution contains only records matched to the cited online NIST source."
+        )
+        file.attrs["slip_systems_schema"] = (
+            "FCC material groups contain /slip_systems; see each group's coordinate_convention"
         )
         materials = file.create_group("materials")
         string_type = h5py.string_dtype("utf-8")

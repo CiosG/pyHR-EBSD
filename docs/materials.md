@@ -65,3 +65,23 @@ Rebuild the database after changing the source table with:
 ```powershell
 python tools/build_materials_h5.py ..\Materials.txt pyhrebsd\materials.h5
 ```
+
+## Slip systems
+
+The FCC records listed below contain a `/slip_systems` group with the standard
+perfect-dislocation family `a/2<110>{111}`: 12 edge systems and 6 unique screw
+directions. The Burgers vectors are stored as fractional cubic unit-cell
+coordinates (`[1, -1, 0] / 2`), while line directions and edge plane normals
+are normalized vectors. A screw system has a zero plane-normal vector because
+its slip plane is not unique from the measured curvature alone.
+
+The assigned FCC keys are `aluminium`, `calcium`, `copper`, `gold`, `iridium`,
+`iron_fcc`, `lead`, `nickel`, `platinum`, `rhodium`, `silver`, `strontium`,
+and `thorium`. Diamond-cubic materials and 3C-SiC are intentionally not
+silently classified as metallic FCC; they need their own phase-specific family.
+
+To reapply the assignment to a copied database:
+
+```powershell
+python tools/add_fcc_slip_systems.py path\to\materials.h5
+```
