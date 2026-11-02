@@ -20,12 +20,13 @@ import numpy as np
 
 from pyhrebsd.geometry import euler_to_matrix
 from pyhrebsd.gnd import (dislocation_matrix, fcc_perfect_dislocations,
-                         partial_nye_from_maps, solve_gnd_l1)
+                         partial_nye_from_maps, solve_gnd_l1,
+                         wurtzite_dislocations, zincblende_perfect_dislocations)
 from pyhrebsd.slip_systems import active_system_mask
 
 
 def _read_h5_geometry(path: Path, scan_group: str
-                      ) -> tuple[float, float, np.ndarray, float, np.ndarray]:
+                      ) -> tuple[float, float, np.ndarray, np.ndarray, np.ndarray]:
     with h5py.File(path) as file:
         header = file[f"{scan_group}/EBSD/Header"]
         data = file[f"{scan_group}/EBSD/Data"]
@@ -54,14 +55,14 @@ def _read_h5_geometry(path: Path, scan_group: str
             raise ValueError("GND analysis currently requires one indexed phase")
         phase_header = header["Phases"][str(int(valid_phases[0]))]
         lengths = np.asarray(phase_header["Lattice Dimensions"][()], dtype=float).reshape(-1)
-        if len(lengths) != 3 or not np.allclose(lengths, lengths[0], rtol=1e-4):
-            raise ValueError("GND FCC basis requires a cubic lattice")
+        if len(lengths) != 3 or not np.all(np.isfinite(lengths)) or np.any(lengths <= 0):
+            raise ValueError("phase lattice dimensions must contain three positive values")
         unit = phase_header["Lattice Dimensions"].attrs.get("Unit", "angstrom")
         if isinstance(unit, bytes):
             unit = unit.decode()
         if str(unit).lower() not in ("angstrom", "ångström", "ang"):
             raise ValueError(f"unknown lattice dimension unit {unit!r}")
-        return steps[0], steps[1], euler_to_matrix(*euler), lengths[0] * 1e-10, phase
+        return steps[0], steps[1], euler_to_matrix(*euler), lengths * 1e-10, phase
 
 
 def _read_maps(path: Path, shape: tuple[int, int], use_strain: bool
@@ -103,6 +104,14 @@ def _active_fcc_types(material_key: str, lattice_m: float):
     if len(mask) != len(types):
         raise ValueError(f"active mask for {material_key} does not match FCC system count")
     return tuple(kind for kind, enabled in zip(types, mask) if enabled)
+
+
+def _types_for_material(material_key: str, lattice_m: np.ndarray):
+    if material_key == "silicon_carbide_3c":
+        return zincblende_perfect_dislocations(float(lattice_m[0]))
+    if material_key in ("silicon_carbide_4h", "gallium_nitride_wurtzite"):
+        return wurtzite_dislocations(float(lattice_m[0]), float(lattice_m[2]))
+    return _active_fcc_types(material_key, float(lattice_m[0]))
 
 
 def _plot_totals(total: np.ndarray, edge: np.ndarray, screw: np.ndarray,
@@ -176,7 +185,9 @@ def main() -> None:
                         help="Include measured in-plane elastic strain gradients")
     parser.add_argument("--lattice-parameter-nm", type=float, default=None,
                         help="Override cubic lattice parameter from H5OINA phase")
-    parser.add_argument("--material", choices=("silicon", "nickel"), default="silicon")
+    parser.add_argument("--material", choices=("silicon", "nickel", "silicon_carbide_3c",
+                                                "silicon_carbide_4h", "gallium_nitride_wurtzite"),
+                        default="silicon")
     parser.add_argument("--poisson-ratio", type=float, default=0.28)
     parser.add_argument("--gradient-span", type=int, default=1,
                         help="Number of map steps across each forward-difference stencil")
@@ -191,8 +202,8 @@ def main() -> None:
     x_step, y_step, orientation, h5_lattice_m, phase = _read_h5_geometry(
         Path(metadata["source_file"]), str(metadata["scan_group"]))
     lattice_m = (h5_lattice_m if args.lattice_parameter_nm is None
-                 else args.lattice_parameter_nm * 1e-9)
-    types = _active_fcc_types(args.material, lattice_m)
+                 else np.asarray([args.lattice_parameter_nm * 1e-9] * 3))
+    types = _types_for_material(args.material, lattice_m)
     if not types:
         raise ValueError(f"all slip systems for {args.material} are inactive")
     matrix = dislocation_matrix(types, orientation)
@@ -211,7 +222,7 @@ def main() -> None:
         screw_indices = [index for index, kind in enumerate(types) if kind.kind == "screw"]
         edge = np.nansum(np.abs(density[..., edge_indices]), axis=-1) if edge_indices else np.zeros(shape)
         screw = np.nansum(np.abs(density[..., screw_indices]), axis=-1) if screw_indices else np.zeros(shape)
-        total = edge + screw
+        total = np.nansum(np.abs(density), axis=-1)
         valid = np.all(np.isfinite(density), axis=-1)
         for values in (edge, screw, total):
             values[~valid] = np.nan

@@ -77,6 +77,56 @@ def silicon_perfect_dislocations(lattice_parameter_m: float = 0.5431e-9
     return fcc_perfect_dislocations(lattice_parameter_m)
 
 
+def zincblende_perfect_dislocations(lattice_parameter_m: float
+                                    ) -> tuple[DislocationType, ...]:
+    """Perfect 3C/zincblende a/2<110>{111} edge and screw candidates."""
+    return fcc_perfect_dislocations(lattice_parameter_m)
+
+
+def wurtzite_dislocations(lattice_a_m: float, lattice_c_m: float
+                          ) -> tuple[DislocationType, ...]:
+    """Representative a, c and a+c dislocations for wurtzite crystals.
+
+    The crystallographic families are converted to Cartesian crystal axes with
+    ``a1=(a,0,0)``, ``a2=(-a/2,sqrt(3)a/2,0)``, and ``c=(0,0,c)``.  The
+    numerical line directions are representative candidates; a mixed or
+    curved segment is not uniquely determined by its Burgers vector.
+    """
+    if not all(np.isfinite(v) and v > 0 for v in (lattice_a_m, lattice_c_m)):
+        raise ValueError("wurtzite lattice parameters must be positive")
+    a1 = np.array([lattice_a_m, 0.0, 0.0])
+    a2 = np.array([-0.5*lattice_a_m, np.sqrt(3.0)*0.5*lattice_a_m, 0.0])
+    a3 = -a1 - a2
+    c = np.array([0.0, 0.0, lattice_c_m])
+    a_burgers = (a1 + a2 - 2.0*a3) / 3.0
+    a_burgers /= np.linalg.norm(a_burgers)
+    a_burgers *= lattice_a_m
+    basal_normal = np.array([0.0, 0.0, 1.0])
+    basal_line = np.cross(basal_normal, a_burgers)
+    basal_line /= np.linalg.norm(basal_line)
+    prismatic_normal = np.array([1.0, 0.0, 0.0])
+    prismatic_line = c / np.linalg.norm(c)
+    mixed_line = c / np.linalg.norm(c)
+    result = []
+    for index in range(3):
+        angle = 2.0 * np.pi * index / 3.0
+        rotation = np.array(((np.cos(angle), -np.sin(angle), 0.0),
+                             (np.sin(angle), np.cos(angle), 0.0),
+                             (0.0, 0.0, 1.0)))
+        b = rotation @ a_burgers
+        basal_b = np.cross(basal_normal, b)
+        basal_b /= np.linalg.norm(basal_b)
+        result.append(DislocationType(f"a edge basal {index+1}", "edge", b,
+                                      basal_b, basal_normal))
+        result.append(DislocationType(f"a edge threading {index+1}", "edge", b,
+                                      prismatic_line, rotation @ prismatic_normal))
+        result.append(DislocationType(f"a+c mixed {index+1}", "mixed", b + c,
+                                      mixed_line if index == 0 else c / np.linalg.norm(c),
+                                      rotation @ prismatic_normal))
+    result.append(DislocationType("c screw", "screw", c, c / np.linalg.norm(c), None))
+    return tuple(result)
+
+
 def observable_nye(alpha: ArrayLike) -> NDArray[np.float64]:
     """Extract the five partial Nye components and one diagonal difference."""
     a = np.asarray(alpha, dtype=float)
