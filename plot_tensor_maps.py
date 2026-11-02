@@ -208,7 +208,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv_paths", nargs="+", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("tensor_maps"))
-    parser.add_argument("--sample-axis-rotation-degrees", type=float, default=90.0)
+    parser.add_argument("--sample-axis-rotation-degrees", type=float, default=0.0)
     parser.add_argument("--color-percentile", type=float, default=99.5)
     parser.add_argument("--step-um", type=float, required=True,
                         help="H5OINA map step in micrometres for the scale bar")
