@@ -126,3 +126,33 @@ are stored explicitly in Miller--Bravais notation. Their `name`,
 `plane_indices`, `direction_indices`, `burgers_vector`, `reference`, and
 `active` datasets preserve the literature notation without silently applying a
 cubic coordinate conversion.
+
+## Dislocation line-energy weighting
+
+`calculate_gnd.py` supports two objective-weight models:
+
+```powershell
+python calculate_gnd.py results --material silicon_carbide_4h --energy-model isotropic_line
+python calculate_gnd.py results --material silicon_carbide_4h --energy-model legacy
+```
+
+`isotropic_line` is the default. For Burgers vector `b`, line direction `xi`,
+shear modulus `mu`, and Poisson ratio `nu`, it uses
+
+```text
+E/L = mu |b|^2/(4 pi) *
+      (cos(chi)^2 + sin(chi)^2/(1-nu)) * log(R/r0) + E_core
+```
+
+Here `chi` is the angle between `b` and `xi`, `r0` is
+`core_radius_factor*|b|`, and `R` is `outer_cutoff_nm`. We normalize the
+weights by the smallest positive energy before L1 minimization, so only
+relative line energies affect the result. The shear modulus is the mean of
+C44, C55, and C66 from the selected material record. This is an isotropic
+approximation, not a full anisotropic Stroh solution.
+
+The tunable parameters are `--outer-cutoff-nm`, `--core-radius-factor`, and
+`--core-energy-j-per-m`. The default core energy is zero because no verified
+phase-specific core-energy database is included. Partial dislocations remain
+database candidates but are not inserted into the current GND matrix until a
+line direction, stacking-fault energy, and core model are available.

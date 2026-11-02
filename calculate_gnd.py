@@ -19,8 +19,9 @@ from matplotlib.colors import LogNorm
 import numpy as np
 
 from pyhrebsd.geometry import euler_to_matrix
+from pyhrebsd.analysis import Material
 from pyhrebsd.gnd import (dislocation_matrix, fcc_perfect_dislocations,
-                         partial_nye_from_maps, solve_gnd_l1,
+                         isotropic_line_energy_weights, partial_nye_from_maps, solve_gnd_l1,
                          wurtzite_dislocations, zincblende_perfect_dislocations)
 from pyhrebsd.slip_systems import active_system_mask
 
@@ -189,6 +190,15 @@ def main() -> None:
                                                 "silicon_carbide_4h", "gallium_nitride_wurtzite"),
                         default="silicon")
     parser.add_argument("--poisson-ratio", type=float, default=0.28)
+    parser.add_argument("--energy-model", choices=("isotropic_line", "legacy"),
+                        default="isotropic_line",
+                        help="GND objective weights: line energy or legacy edge/screw")
+    parser.add_argument("--outer-cutoff-nm", type=float, default=100.0,
+                        help="outer elastic cutoff R in the line-energy logarithm")
+    parser.add_argument("--core-radius-factor", type=float, default=2.0,
+                        help="r0 = factor * |b| in the line-energy model")
+    parser.add_argument("--core-energy-j-per-m", type=float, default=0.0,
+                        help="optional uniform core-energy contribution per unit length")
     parser.add_argument("--gradient-span", type=int, default=1,
                         help="Number of map steps across each forward-difference stencil")
     args = parser.parse_args()
@@ -206,6 +216,19 @@ def main() -> None:
     types = _types_for_material(args.material, lattice_m)
     if not types:
         raise ValueError(f"all slip systems for {args.material} are inactive")
+    database = Path(__file__).resolve().parent / "pyhrebsd" / "materials.h5"
+    material_record = Material.from_hdf5(database, args.material)
+    stiffness = np.asarray(material_record.stiffness_voigt_gpa, dtype=float) * 1e9
+    shear_modulus_pa = float(np.mean((stiffness[3, 3], stiffness[4, 4], stiffness[5, 5])))
+    poisson_ratio = float(np.clip(stiffness[0, 1] / (stiffness[0, 0] + stiffness[0, 1]), 0.0, 0.49))
+    if args.energy_model == "isotropic_line":
+        weights = isotropic_line_energy_weights(
+            types, shear_modulus_pa, poisson_ratio,
+            args.outer_cutoff_nm * 1e-9, args.core_radius_factor,
+            np.full(len(types), args.core_energy_j_per_m),
+        )
+    else:
+        weights = None
     matrix = dislocation_matrix(types, orientation)
     methods = ("roi", "homography") if args.method == "both" else (args.method,)
     comparison_maps = {}
@@ -217,7 +240,7 @@ def main() -> None:
             strain[phase.reshape(shape) == 0] = np.nan
         observed = partial_nye_from_maps(rotation, x_step, y_step, strain,
                                          args.gradient_span)
-        density, residual = solve_gnd_l1(observed, matrix, types, args.poisson_ratio)
+        density, residual = solve_gnd_l1(observed, matrix, types, poisson_ratio, weights)
         edge_indices = [index for index, kind in enumerate(types) if kind.kind == "edge"]
         screw_indices = [index for index, kind in enumerate(types) if kind.kind == "screw"]
         edge = np.nansum(np.abs(density[..., edge_indices]), axis=-1) if edge_indices else np.zeros(shape)
@@ -244,6 +267,12 @@ def main() -> None:
         info = {
             "method": method, "source_csv": str(root / method / "scan_results.csv"),
             "paper_model": "six-observable partial Nye minimum-line-energy L1",
+            "energy_model": args.energy_model,
+            "line_energy_shear_modulus_pa": shear_modulus_pa,
+            "line_energy_poisson_ratio": poisson_ratio,
+            "line_energy_outer_cutoff_nm": args.outer_cutoff_nm,
+            "line_energy_core_radius_factor": args.core_radius_factor,
+            "line_energy_core_energy_j_per_m": args.core_energy_j_per_m,
             "elastic_strain_gradients_included": args.strain_correction,
             "unmeasured_depth_strain_gradients_assumed_zero": True,
             "strain_correction_scope": ("available in-plane derivatives only; not a full 3-D Nye tensor"

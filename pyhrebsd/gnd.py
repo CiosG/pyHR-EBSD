@@ -196,8 +196,59 @@ def dislocation_matrix(types: tuple[DislocationType, ...], sample_to_crystal: Ar
     return matrix
 
 
+def isotropic_line_energy_weights(
+        types: tuple[DislocationType, ...], shear_modulus_pa: float,
+        poisson_ratio: float = 0.28, outer_cutoff_m: float = 100e-9,
+        core_radius_factor: float = 2.0,
+        core_energy_j_per_m: ArrayLike | None = None
+        ) -> NDArray[np.float64]:
+    """Return relative isotropic elastic line energies for GND weighting.
+
+    For each straight segment, ``chi`` is the angle between Burgers vector and
+    line direction. The elastic part is
+
+    ``mu*b**2/(4*pi) * (cos(chi)**2 + sin(chi)**2/(1-nu)) * log(R/r0)``.
+
+    ``core_energy_j_per_m`` may add material-specific core energies. The output
+    is normalized by its smallest positive value because only relative weights
+    affect the L1 minimization. This is an isotropic approximation; anisotropic
+    Stroh/Barnett-Lothe factors are intentionally not inferred from C_ijkl.
+    """
+    if not np.isfinite(shear_modulus_pa) or shear_modulus_pa <= 0:
+        raise ValueError("shear_modulus_pa must be positive")
+    if not 0 <= poisson_ratio < 0.5:
+        raise ValueError("poisson_ratio must be between 0 and 0.5")
+    if not np.isfinite(outer_cutoff_m) or outer_cutoff_m <= 0:
+        raise ValueError("outer_cutoff_m must be positive")
+    if not np.isfinite(core_radius_factor) or core_radius_factor <= 0:
+        raise ValueError("core_radius_factor must be positive")
+    values = []
+    for kind in types:
+        b = np.asarray(kind.burgers_crystal_m, dtype=float)
+        line = np.asarray(kind.line_crystal, dtype=float)
+        b_norm, line_norm = np.linalg.norm(b), np.linalg.norm(line)
+        if b_norm <= 0 or line_norm <= 0:
+            raise ValueError(f"invalid Burgers or line vector for {kind.name}")
+        cosine = np.clip(abs(float(np.dot(b, line))) / (b_norm * line_norm), 0.0, 1.0)
+        sine2 = 1.0 - cosine * cosine
+        r0 = core_radius_factor * b_norm
+        logarithm = max(np.log(max(outer_cutoff_m / r0, 1.0000001)), 1e-12)
+        elastic = (shear_modulus_pa * b_norm * b_norm / (4.0 * np.pi) *
+                   (cosine * cosine + sine2 / (1.0 - poisson_ratio)) * logarithm)
+        values.append(elastic)
+    weights = np.asarray(values, dtype=float)
+    if core_energy_j_per_m is not None:
+        core = np.asarray(core_energy_j_per_m, dtype=float)
+        if core.shape != weights.shape or np.any(~np.isfinite(core)) or np.any(core < 0):
+            raise ValueError("core_energy_j_per_m must match types and be nonnegative")
+        weights += core
+    minimum = float(np.min(weights[weights > 0]))
+    return weights / minimum
+
+
 def solve_gnd_l1(observables_per_m: ArrayLike, matrix_m: ArrayLike,
                  types: tuple[DislocationType, ...], poisson_ratio: float = 0.28
+                 , weights: ArrayLike | None = None
                  ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Minimum-line-energy signed densities (m^-2) and residuals (1/m).
 
@@ -210,8 +261,13 @@ def solve_gnd_l1(observables_per_m: ArrayLike, matrix_m: ArrayLike,
         raise ValueError("incompatible observables or dislocation matrix")
     if not 0 <= poisson_ratio < 0.5:
         raise ValueError("poisson_ratio must be between 0 and 0.5")
-    weights = np.array([1 / (1 - poisson_ratio) if kind.kind == "edge" else 1
-                        for kind in types])
+    if weights is None:
+        weights = np.array([1 / (1 - poisson_ratio) if kind.kind == "edge" else 1
+                            for kind in types])
+    else:
+        weights = np.asarray(weights, dtype=float)
+        if weights.shape != (len(types),) or np.any(~np.isfinite(weights)) or np.any(weights <= 0):
+            raise ValueError("weights must be positive and match dislocation types")
     objective = np.r_[weights, weights]
     equality = np.column_stack((a, -a)) * 1e12
     flat = k.reshape(-1, 6)
