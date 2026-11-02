@@ -105,6 +105,7 @@ def write_fcc_systems(group: h5py.Group) -> None:
     systems.create_dataset("burgers_fractional", data=records["burgers_fractional"])
     systems.create_dataset("line_direction", data=records["line_direction"])
     systems.create_dataset("plane_normal", data=records["plane_normal"])
+    systems.create_dataset("active", data=np.ones(18, dtype=np.bool_))
     systems.attrs["family"] = "a/2<110>{111}"
     systems.attrs["system_count"] = 18
     systems.attrs["edge_system_count"] = 12
@@ -196,6 +197,7 @@ def write_bcc_systems(group: h5py.Group) -> None:
         systems.create_dataset(key, data=np.asarray(records[key], dtype=string_type))
     for key in ("burgers_fractional", "line_direction", "plane_normal"):
         systems.create_dataset(key, data=records[key])
+    systems.create_dataset("active", data=np.ones(48, dtype=np.bool_))
     systems.attrs["family"] = "BCC {110}<111> + {112}<111> + {123}<111>"
     systems.attrs["system_count"] = 48
     systems.attrs["family_counts"] = "{110}<111>:12; {112}<111>:12; {123}<111>:24"
@@ -236,4 +238,26 @@ def add_fcc_systems_to_file(path: str) -> list[str]:
             "material/slip_systems datasets; see each group coordinate_convention"
         )
     return updated
+
+
+def set_system_activity(path: str, material: str, indices: list[int], active: bool) -> None:
+    """Set the active flag for selected slip-system rows in one material."""
+    with h5py.File(path, "r+") as file:
+        systems = file["materials"][material]["slip_systems"]
+        flags = systems["active"][:]
+        if any(index < 0 or index >= len(flags) for index in indices):
+            raise IndexError(f"slip-system index outside 0..{len(flags) - 1}")
+        flags[indices] = active
+        systems["active"][:] = flags
+
+
+def active_system_mask(group: h5py.Group) -> np.ndarray:
+    """Return the boolean activity mask, defaulting old databases to all true."""
+    systems = group["slip_systems"]
+    if "active" not in systems:
+        return np.ones(systems["name"].shape[0], dtype=np.bool_)
+    flags = np.asarray(systems["active"], dtype=np.bool_)
+    if flags.ndim != 1 or flags.shape[0] != systems["name"].shape[0]:
+        raise ValueError("slip-system active mask has the wrong length")
+    return flags
 

@@ -21,6 +21,7 @@ import numpy as np
 from pyhrebsd.geometry import euler_to_matrix
 from pyhrebsd.gnd import (dislocation_matrix, fcc_perfect_dislocations,
                          partial_nye_from_maps, solve_gnd_l1)
+from pyhrebsd.slip_systems import active_system_mask
 
 
 def _read_h5_geometry(path: Path, scan_group: str
@@ -83,6 +84,25 @@ def _read_maps(path: Path, shape: tuple[int, int], use_strain: bool
                              for i in range(1, 4)]
     return rotation.reshape(shape + (3,)), (strain.reshape(shape + (3, 3))
                                                if strain is not None else None)
+
+
+def _active_fcc_types(material_key: str, lattice_m: float):
+    """Build FCC types and remove rows disabled in the materials database."""
+    types = fcc_perfect_dislocations(lattice_m)
+    database = Path(__file__).resolve().parent / "pyhrebsd" / "materials.h5"
+    if not database.is_file():
+        return types
+    with h5py.File(database, "r") as file:
+        materials = file.get("materials")
+        if materials is None or material_key not in materials:
+            return types
+        group = materials[material_key]
+        if "slip_systems" not in group:
+            return types
+        mask = active_system_mask(group)
+    if len(mask) != len(types):
+        raise ValueError(f"active mask for {material_key} does not match FCC system count")
+    return tuple(kind for kind, enabled in zip(types, mask) if enabled)
 
 
 def _plot_totals(total: np.ndarray, edge: np.ndarray, screw: np.ndarray,
@@ -172,7 +192,9 @@ def main() -> None:
         Path(metadata["source_file"]), str(metadata["scan_group"]))
     lattice_m = (h5_lattice_m if args.lattice_parameter_nm is None
                  else args.lattice_parameter_nm * 1e-9)
-    types = fcc_perfect_dislocations(lattice_m)
+    types = _active_fcc_types(args.material, lattice_m)
+    if not types:
+        raise ValueError(f"all slip systems for {args.material} are inactive")
     matrix = dislocation_matrix(types, orientation)
     methods = ("roi", "homography") if args.method == "both" else (args.method,)
     comparison_maps = {}
@@ -185,8 +207,10 @@ def main() -> None:
         observed = partial_nye_from_maps(rotation, x_step, y_step, strain,
                                          args.gradient_span)
         density, residual = solve_gnd_l1(observed, matrix, types, args.poisson_ratio)
-        edge = np.nansum(np.abs(density[..., :12]), axis=-1)
-        screw = np.nansum(np.abs(density[..., 12:]), axis=-1)
+        edge_indices = [index for index, kind in enumerate(types) if kind.kind == "edge"]
+        screw_indices = [index for index, kind in enumerate(types) if kind.kind == "screw"]
+        edge = np.nansum(np.abs(density[..., edge_indices]), axis=-1) if edge_indices else np.zeros(shape)
+        screw = np.nansum(np.abs(density[..., screw_indices]), axis=-1) if screw_indices else np.zeros(shape)
         total = edge + screw
         valid = np.all(np.isfinite(density), axis=-1)
         for values in (edge, screw, total):

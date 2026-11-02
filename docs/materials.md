@@ -91,3 +91,14 @@ The BCC records additionally contain the conventional candidate families
 are candidate geometries, not a declaration that all systems are active. The
 database does not contain critical resolved shear stresses, so activity must
 be selected from the phase, loading state, or a constrained/sparse GND fit.
+
+Every slip-system group has an `active` boolean dataset, initially set to
+`True`. Systems with `active=False` must be excluded by consumers. For example,
+to disable rows 0 and 3 of nickel:
+
+```powershell
+python tools/set_slip_system_activity.py nickel 0 3 --inactive
+```
+
+The activity flag is deliberately separate from the crystallographic family:
+turning a system off records an analysis choice without deleting its geometry.
