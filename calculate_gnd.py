@@ -257,7 +257,9 @@ def main() -> None:
         for values in (edge, screw, total):
             values[~valid] = np.nan
         comparison_maps[method] = total
-        variant = "gnd_strain_corrected" if args.strain_correction else "gnd"
+        variant = f"gnd_{args.energy_model}"
+        if args.strain_correction:
+            variant += "_strain_corrected"
         if args.gradient_span != 1:
             variant += f"_span{args.gradient_span}"
         destination = root / method / variant
