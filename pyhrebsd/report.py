@@ -208,7 +208,10 @@ def generate_report(output_dir: str | Path, report_format: str = "html") -> Path
     # Combined tensor panels from the established map layout.
     try:
         from plot_tensor_maps import KINDS, draw, load_result, shared_limit
-        panel = load_result(csv_path, 90.0, mask_bad_fit=True)
+        # Keep combined tensor panels in the same unrotated sample frame as the
+        # individual component maps above; a 90-degree display rotation swaps
+        # E13/E23 (with a sign change) and is therefore opt-in in plot_tensor_maps.
+        panel = load_result(csv_path, 0.0, mask_bad_fit=True)
         panel_rotation_limit = shared_limit([panel["rotations"]], 99.5)
         panel_strain_limit = shared_limit([panel["tensors"][kind] for kind in KINDS], 99.5)
         for kind in KINDS:
