@@ -63,6 +63,32 @@ SEMICONDUCTOR_SLIP_FAMILIES = {
     },
 }
 
+DISLOCATION_DEFINITIONS = {
+    "silicon_carbide_4h": (
+        ("a_edge_TED", "edge", "1/3<11-20>", "[0001] (representative threading-edge line)", "prismatic_a", "10.1016/j.jallcom.2025.183454", "high"),
+        ("a_edge_BPD", "edge", "1/3<11-20>", "basal-plane line; direction depends on segment", "basal_a", "10.1080/14786435.2012.716168", "high"),
+        ("c_screw_TSD", "screw", "[0001]", "[0001]", "pyramidal_ca_I", "10.1016/j.jallcom.2025.183454", "high"),
+        ("a_c_mixed_TMD", "mixed", "1/3<11-23>", "mixed; line direction is not fixed by b alone", "pyramidal_ca_I", "10.1016/j.jallcom.2025.183454", "medium"),
+    ),
+    "silicon_carbide_3c": (
+        ("perfect_edge", "edge", "1/2<110>", "perpendicular-to-b line in {111} (representative)", "zincblende_111_110", "3c_sic_slip_2023", "medium"),
+        ("perfect_screw", "screw", "1/2<110>", "parallel-to-b line", "zincblende_111_110", "3c_sic_slip_2023", "medium"),
+        ("shockley_partial", "partial", "1/6<112>", "line character depends on the partial segment", "zincblende_111_110", "3c_sic_slip_2023", "medium"),
+    ),
+    "gallium_nitride_wurtzite": (
+        ("a_edge", "edge", "1/3<11-20>", "[0001] (representative threading-edge line)", "basal_a", "10.1103/PhysRevLett.79.3672", "high"),
+        ("c_screw", "screw", "[0001]", "[0001]", "basal_a", "10.1103/PhysRevLett.79.3672", "high"),
+        ("a_c_mixed", "mixed", "1/3<11-23>", "mixed; line direction is not fixed by b alone", "pyramidal_ca_I", "10.1103/PhysRevLett.79.3672", "high"),
+    ),
+}
+
+DISLOCATION_REFERENCES = {
+    "10.1016/j.jallcom.2025.183454": ("Chen et al., Identification and formation mechanism of threading screw dislocations in 4H-SiC crystal", "https://doi.org/10.1016/j.jallcom.2025.183454"),
+    "10.1080/14786435.2012.716168": ("Analysis of contrasts and identifications of Burgers vectors for basal-plane dislocations and threading edge dislocations in 4H-SiC", "https://doi.org/10.1080/14786435.2012.716168"),
+    "3c_sic_slip_2023": ("Atomic study on deformation behavior and anisotropy effect of 3C-SiC under nanoindentation", "https://www.sciencedirect.com/science/article/pii/S2238785423031423"),
+    "10.1103/PhysRevLett.79.3672": ("Elsner et al., Theory of Threading Edge and Screw Dislocations in GaN", "https://doi.org/10.1103/PhysRevLett.79.3672"),
+}
+
 
 def fcc_system_records() -> dict[str, np.ndarray]:
     """Return the 18 standard FCC ``a/2<110>{111}`` systems.
@@ -283,6 +309,30 @@ def write_semiconductor_slip_families(group: h5py.Group, definition: dict) -> No
     families.attrs["source"] = "See per-family reference dataset"
 
 
+def write_dislocations(group: h5py.Group, rows: tuple[tuple[str, ...], ...]) -> None:
+    """Write dislocation candidates without inventing line vectors."""
+    if "dislocations" in group:
+        del group["dislocations"]
+    result = group.create_group("dislocations")
+    string_type = h5py.string_dtype("utf-8")
+    names, characters, burgers, lines, families, refs, confidence = zip(*rows)
+    result.create_dataset("name", data=np.asarray(names, dtype=string_type))
+    result.create_dataset("character", data=np.asarray(characters, dtype=string_type))
+    result.create_dataset("burgers_vector", data=np.asarray(burgers, dtype=string_type))
+    result.create_dataset("line_direction", data=np.asarray(lines, dtype=string_type))
+    result.create_dataset("slip_family", data=np.asarray(families, dtype=string_type))
+    result.create_dataset("reference", data=np.asarray(refs, dtype=string_type))
+    result.create_dataset("confidence", data=np.asarray(confidence, dtype=string_type))
+    result.create_dataset("active", data=np.ones(len(rows), dtype=np.bool_))
+    result.create_dataset("reference_title", data=np.asarray([DISLOCATION_REFERENCES[ref][0] for ref in refs], dtype=string_type))
+    result.create_dataset("reference_url", data=np.asarray([DISLOCATION_REFERENCES[ref][1] for ref in refs], dtype=string_type))
+    result.attrs["line_direction_note"] = (
+        "Mixed or curved dislocations do not have a unique line direction from b alone; "
+        "textual descriptions are intentional where a numerical vector would mislead."
+    )
+    result.attrs["activity_note"] = "Candidates are enabled by default; activity is an analysis choice, not a CRSS prediction"
+
+
 def add_fcc_systems_to_file(path: str) -> list[str]:
     """Assign the FCC family to all selected FCC material records in an HDF5 file."""
     updated: list[str] = []
@@ -305,6 +355,12 @@ def add_fcc_systems_to_file(path: str) -> list[str]:
                 continue
             write_semiconductor_slip_families(materials[key], definition)
             materials[key].attrs["slip_family_schema"] = "literature_indexed_families"
+            updated.append(key)
+        for key, rows in DISLOCATION_DEFINITIONS.items():
+            if key not in materials:
+                continue
+            write_dislocations(materials[key], rows)
+            materials[key].attrs["dislocation_schema"] = "textual_burgers_and_line_character_v1"
             updated.append(key)
         file.attrs["schema_version"] = "1.1"
         file.attrs["slip_systems_schema"] = (

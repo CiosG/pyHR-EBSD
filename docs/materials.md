@@ -113,6 +113,14 @@ python tools/set_slip_family_activity.py vanadium "{112}<111>" --inactive
 The analysis mask combines the per-system `active` flags with `family_active`,
 so a disabled family cannot contribute any of its systems.
 
+The semiconductor records also contain `/dislocations`. This group stores
+edge, screw, mixed, and (for 3C-SiC) Shockley-partial candidates with their
+Burgers-vector notation, line-character description, linked slip family,
+activity flag, confidence, and literature reference. Mixed and curved lines
+are intentionally textual rather than assigned an arbitrary Cartesian line
+vector. The GND solver still needs a phase-specific conversion into numerical
+line vectors before using these entries in an optimization.
+
 The semiconductor phases use `/slip_families` because their hexagonal systems
 are stored explicitly in Miller--Bravais notation. Their `name`,
 `plane_indices`, `direction_indices`, `burgers_vector`, `reference`, and
