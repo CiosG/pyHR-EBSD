@@ -112,3 +112,9 @@ python tools/set_slip_family_activity.py vanadium "{112}<111>" --inactive
 
 The analysis mask combines the per-system `active` flags with `family_active`,
 so a disabled family cannot contribute any of its systems.
+
+The semiconductor phases use `/slip_families` because their hexagonal systems
+are stored explicitly in Miller--Bravais notation. Their `name`,
+`plane_indices`, `direction_indices`, `burgers_vector`, `reference`, and
+`active` datasets preserve the literature notation without silently applying a
+cubic coordinate conversion.

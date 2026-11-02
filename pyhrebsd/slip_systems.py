@@ -30,6 +30,39 @@ BCC_MATERIAL_KEYS = frozenset({
     "potassium", "rubidium", "sodium", "tungsten", "vanadium",
 })
 
+SEMICONDUCTOR_SLIP_FAMILIES = {
+    "silicon_carbide_4h": {
+        "families": (
+            ("basal_a", "{0001}", "<11-20>", "1/3<11-20>", "10.1039/D4CE00927D"),
+            ("prismatic_a", "{10-10}", "<11-20>", "1/3<11-20>", "10.1007/s11664-000-0194-1"),
+            ("pyramidal_a", "{10-11}", "<11-20>", "1/3<11-20>", "10.1039/D4CE00927D"),
+            ("pyramidal_ca_I", "{10-11}", "<11-23>", "1/3<11-23>", "10.1039/D4CE00927D"),
+            ("pyramidal_ca_II", "{11-22}", "<11-23>", "1/3<11-23>", "10.1039/D4CE00927D"),
+        ),
+        "references": (
+            ("10.1039/D4CE00927D", "Lu et al., Comparing basal and prismatic slips induced by thermal stresses in 4H-SiC crystals", "https://doi.org/10.1039/D4CE00927D"),
+            ("10.1007/s11664-000-0194-1", "Ha et al., Identification of prismatic slip bands in 4H SiC boules grown by physical vapor transport", "https://doi.org/10.1007/s11664-000-0194-1"),
+        ),
+    },
+    "silicon_carbide_3c": {
+        "families": (("zincblende_111_110", "{111}", "<110>", "1/2<110>", "https://www.sciencedirect.com/science/article/pii/S2238785423031423"),),
+        "references": (("3c_sic_slip_2023", "Atomic study on deformation behavior and anisotropy effect of 3C-SiC under nanoindentation", "https://www.sciencedirect.com/science/article/pii/S2238785423031423"),),
+    },
+    "gallium_nitride_wurtzite": {
+        "families": (
+            ("basal_a", "{0001}", "<11-20>", "1/3<11-20>", "10.1063/1.4939907"),
+            ("prismatic_a_I", "{10-10}", "<11-20>", "1/3<11-20>", "10.1063/1.4939907"),
+            ("prismatic_a_II", "{11-20}", "<10-10>", "1/3<10-10>", "10.1063/1.4939907"),
+            ("pyramidal_ca_I", "{10-11}", "<11-23>", "1/3<11-23>", "10.11524/jpsj.76.044602"),
+            ("pyramidal_ca_II", "{11-22}", "<11-23>", "1/3<11-23>", "10.11524/jpsj.76.044602"),
+        ),
+        "references": (
+            ("10.1063/1.4939907", "Critical thickness for the formation of misfit dislocations originating from prismatic slip in semipolar and nonpolar III-nitride heterostructures", "https://doi.org/10.1063/1.4939907"),
+            ("10.11524/jpsj.76.044602", "Iwata et al., Dislocation plasticity in wurtzite GaN", "https://doi.org/10.1143/JPSJ.76.044602"),
+        ),
+    },
+}
+
 
 def fcc_system_records() -> dict[str, np.ndarray]:
     """Return the 18 standard FCC ``a/2<110>{111}`` systems.
@@ -223,6 +256,33 @@ def write_bcc_systems(group: h5py.Group) -> None:
     )
 
 
+def write_semiconductor_slip_families(group: h5py.Group, definition: dict) -> None:
+    """Write literature-backed slip families using explicit Miller indices."""
+    if "slip_families" in group:
+        del group["slip_families"]
+    families = group.create_group("slip_families")
+    string_type = h5py.string_dtype("utf-8")
+    rows = definition["families"]
+    reference_map = {record[0]: record[1:] for record in definition["references"]}
+    reference_titles = []
+    reference_urls = []
+    for row in rows:
+        title, url = reference_map[row[4]]
+        reference_titles.append(title)
+        reference_urls.append(url)
+    families.create_dataset("name", data=np.asarray([row[0] for row in rows], dtype=string_type))
+    families.create_dataset("plane_indices", data=np.asarray([row[1] for row in rows], dtype=string_type))
+    families.create_dataset("direction_indices", data=np.asarray([row[2] for row in rows], dtype=string_type))
+    families.create_dataset("burgers_vector", data=np.asarray([row[3] for row in rows], dtype=string_type))
+    families.create_dataset("reference", data=np.asarray([row[4] for row in rows], dtype=string_type))
+    families.create_dataset("reference_title", data=np.asarray(reference_titles, dtype=string_type))
+    families.create_dataset("reference_url", data=np.asarray(reference_urls, dtype=string_type))
+    families.create_dataset("active", data=np.ones(len(rows), dtype=np.bool_))
+    families.attrs["notation"] = "Miller-Bravais four-index notation for hexagonal phases"
+    families.attrs["activity_note"] = "Candidate families; active flags are analysis choices, not CRSS predictions"
+    families.attrs["source"] = "See per-family reference dataset"
+
+
 def add_fcc_systems_to_file(path: str) -> list[str]:
     """Assign the FCC family to all selected FCC material records in an HDF5 file."""
     updated: list[str] = []
@@ -239,6 +299,12 @@ def add_fcc_systems_to_file(path: str) -> list[str]:
                 continue
             write_bcc_systems(materials[key])
             materials[key].attrs["slip_system_family"] = "bcc_110_112_123_111"
+            updated.append(key)
+        for key, definition in SEMICONDUCTOR_SLIP_FAMILIES.items():
+            if key not in materials:
+                continue
+            write_semiconductor_slip_families(materials[key], definition)
+            materials[key].attrs["slip_family_schema"] = "literature_indexed_families"
             updated.append(key)
         file.attrs["schema_version"] = "1.1"
         file.attrs["slip_systems_schema"] = (
@@ -261,13 +327,23 @@ def set_system_activity(path: str, material: str, indices: list[int], active: bo
 def set_family_activity(path: str, material: str, family: str, active: bool) -> None:
     """Enable or disable every system in one crystallographic family."""
     with h5py.File(path, "r+") as file:
-        systems = file["materials"][material]["slip_systems"]
-        names = [str(value) for value in systems["family_names"].asstr()[:]]
+        material_group = file["materials"][material]
+        systems = material_group.get("slip_systems")
+        if systems is not None:
+            names = [str(value) for value in systems["family_names"].asstr()[:]]
+        else:
+            systems = material_group["slip_families"]
+            names = [str(value) for value in systems["name"].asstr()[:]]
         if family not in names:
             raise KeyError(f"unknown family {family!r}; available: {', '.join(names)}")
-        flags = systems["family_active"][:]
-        flags[names.index(family)] = active
-        systems["family_active"][:] = flags
+        if "family_active" in systems:
+            flags = systems["family_active"][:]
+            flags[names.index(family)] = active
+            systems["family_active"][:] = flags
+        else:
+            flags = systems["active"][:]
+            flags[names.index(family)] = active
+            systems["active"][:] = flags
 
 
 def active_system_mask(group: h5py.Group) -> np.ndarray:

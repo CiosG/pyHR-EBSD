@@ -20,7 +20,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     updated = add_fcc_systems_to_file(str(args.path))
-    print(f"Updated {len(updated)} FCC/BCC phases in {args.path}")
+    print(f"Updated slip-system families in {len(updated)} material phases in {args.path}")
     print("  " + ", ".join(updated))
 
 
