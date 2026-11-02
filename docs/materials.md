@@ -102,3 +102,13 @@ python tools/set_slip_system_activity.py nickel 0 3 --inactive
 
 The activity flag is deliberately separate from the crystallographic family:
 turning a system off records an analysis choice without deleting its geometry.
+
+Families can be switched as a whole using `family_active`. For example, to
+disable every `{112}<111>` BCC system for vanadium:
+
+```powershell
+python tools/set_slip_family_activity.py vanadium "{112}<111>" --inactive
+```
+
+The analysis mask combines the per-system `active` flags with `family_active`,
+so a disabled family cannot contribute any of its systems.

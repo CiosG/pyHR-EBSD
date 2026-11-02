@@ -102,10 +102,13 @@ def write_fcc_systems(group: h5py.Group) -> None:
     string_type = h5py.string_dtype("utf-8")
     systems.create_dataset("name", data=np.asarray(records["names"], dtype=string_type))
     systems.create_dataset("kind", data=np.asarray(records["kind"], dtype=string_type))
+    systems.create_dataset("family_name", data=np.full(18, "fcc_a_over_2_110_111", dtype=string_type))
     systems.create_dataset("burgers_fractional", data=records["burgers_fractional"])
     systems.create_dataset("line_direction", data=records["line_direction"])
     systems.create_dataset("plane_normal", data=records["plane_normal"])
     systems.create_dataset("active", data=np.ones(18, dtype=np.bool_))
+    systems.create_dataset("family_names", data=np.asarray(["fcc_a_over_2_110_111"], dtype=string_type))
+    systems.create_dataset("family_active", data=np.ones(1, dtype=np.bool_))
     systems.attrs["family"] = "a/2<110>{111}"
     systems.attrs["system_count"] = 18
     systems.attrs["edge_system_count"] = 12
@@ -195,9 +198,13 @@ def write_bcc_systems(group: h5py.Group) -> None:
     systems.create_dataset("name", data=np.asarray(records["names"], dtype=string_type))
     for key in ("kind", "family"):
         systems.create_dataset(key, data=np.asarray(records[key], dtype=string_type))
+    systems.create_dataset("family_name", data=np.asarray(records["family"], dtype=string_type))
     for key in ("burgers_fractional", "line_direction", "plane_normal"):
         systems.create_dataset(key, data=records[key])
     systems.create_dataset("active", data=np.ones(48, dtype=np.bool_))
+    family_names = np.asarray(["{110}<111>", "{112}<111>", "{123}<111>"], dtype=string_type)
+    systems.create_dataset("family_names", data=family_names)
+    systems.create_dataset("family_active", data=np.ones(3, dtype=np.bool_))
     systems.attrs["family"] = "BCC {110}<111> + {112}<111> + {123}<111>"
     systems.attrs["system_count"] = 48
     systems.attrs["family_counts"] = "{110}<111>:12; {112}<111>:12; {123}<111>:24"
@@ -251,12 +258,33 @@ def set_system_activity(path: str, material: str, indices: list[int], active: bo
         systems["active"][:] = flags
 
 
+def set_family_activity(path: str, material: str, family: str, active: bool) -> None:
+    """Enable or disable every system in one crystallographic family."""
+    with h5py.File(path, "r+") as file:
+        systems = file["materials"][material]["slip_systems"]
+        names = [str(value) for value in systems["family_names"].asstr()[:]]
+        if family not in names:
+            raise KeyError(f"unknown family {family!r}; available: {', '.join(names)}")
+        flags = systems["family_active"][:]
+        flags[names.index(family)] = active
+        systems["family_active"][:] = flags
+
+
 def active_system_mask(group: h5py.Group) -> np.ndarray:
     """Return the boolean activity mask, defaulting old databases to all true."""
     systems = group["slip_systems"]
     if "active" not in systems:
-        return np.ones(systems["name"].shape[0], dtype=np.bool_)
-    flags = np.asarray(systems["active"], dtype=np.bool_)
+        flags = np.ones(systems["name"].shape[0], dtype=np.bool_)
+    else:
+        flags = np.asarray(systems["active"], dtype=np.bool_)
+    if "family_active" in systems:
+        family_names = [str(value) for value in systems["family_names"].asstr()[:]]
+        family_flags = np.asarray(systems["family_active"], dtype=np.bool_)
+        per_system_family = [str(value) for value in systems["family_name"].asstr()[:]]
+        if len(family_names) != len(family_flags) or len(per_system_family) != len(flags):
+            raise ValueError("slip-system family activity data has inconsistent lengths")
+        lookup = dict(zip(family_names, family_flags))
+        flags &= np.asarray([lookup[name] for name in per_system_family], dtype=np.bool_)
     if flags.ndim != 1 or flags.shape[0] != systems["name"].shape[0]:
         raise ValueError("slip-system active mask has the wrong length")
     return flags
