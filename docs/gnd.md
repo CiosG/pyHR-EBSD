@@ -18,10 +18,27 @@ a 2-D approximation rather than a complete 3-D Nye tensor. Use
 noise amplification while lowering spatial resolution.
 
 The solver minimizes weighted L1 line energy while matching six partial Nye
-observables. Edge dislocations use weight `1/(1-nu)` and screw dislocations
-use weight 1. Multiple density vectors can satisfy the same observables;
-per-system allocation depends on the assumed slip types, material constants,
-and energy weights. Statistically stored dislocations are not measured.
+observables. The historical `legacy` model uses the Wilkinson--Randman
+isotropic weights: edge `1/(1-nu)` and screw `1`. The default
+`isotropic_line` model additionally includes Burgers-vector length and the
+edge/screw character angle. `anisotropic_directional_test` is an experimental
+mode that contracts the full material `C_ijkl` tensor with each line direction;
+it is not a validated Stroh/Barnett--Lothe implementation.
+
+Select a model explicitly when comparing results:
+
+```powershell
+python calculate_gnd.py path/to/results --material nickel --energy-model legacy
+python calculate_gnd.py path/to/results --material nickel --energy-model isotropic_line
+python calculate_gnd.py path/to/results --material nickel --energy-model anisotropic_directional_test
+```
+
+Multiple density vectors can satisfy the same observables; per-system
+allocation depends on the assumed slip types, material constants, line-energy
+model, and active-family flags. Statistically stored dislocations are not
+measured. Partial dislocations remain reference candidates and are excluded
+from the current numerical GND basis unless a line direction and core/stacking
+fault model are supplied.
 
 Each method writes a GND result folder containing `.npz` arrays, summary JSON,
 and total, edge, screw, and per-type maps. Boundary points that lack the
@@ -32,7 +49,7 @@ rotation noise, particularly for nanometer-step scans. Treat raw GND values as
 model-dependent estimates and validate them against the noise floor and known
 microstructure.
 
-The implementation follows Wilkinson and Randman, *Philosophical Magazine*
-90 (2010), especially Eqs. 6-9 and 11, and Arsenlis and Parks,
+The Nye observables and the `legacy` optimization follow Wilkinson and Randman,
+*Philosophical Magazine* 90 (2010), especially Eqs. 6-9 and 11, and Arsenlis and Parks,
 *Acta Materialia* 47 (1999). Consult the original papers when interpreting the
 partial Nye tensor and dislocation basis.
